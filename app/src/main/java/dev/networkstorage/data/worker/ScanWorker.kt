@@ -14,8 +14,12 @@ class ScanWorker @AssistedInject constructor(@Assisted context: Context, @Assist
     override suspend fun doWork(): Result {
         val connectionId = inputData.getString(KEY_CONNECTION_ID) ?: return Result.failure()
         return try {
-            repository.scan(connectionId, id.toString()) { count, path -> setProgress(Data.Builder().putLong(KEY_COUNT, count).putString(KEY_PATH, path).build()) }
-            Result.success(Data.Builder().putLong(KEY_COUNT, progress.getLong(KEY_COUNT, 0)).build())
+            var finalCount = 0L
+            repository.scan(connectionId, id.toString()) { count, path ->
+                finalCount = count
+                setProgress(Data.Builder().putLong(KEY_COUNT, count).putString(KEY_PATH, path).build())
+            }
+            Result.success(Data.Builder().putLong(KEY_COUNT, finalCount).build())
         } catch (_: kotlinx.coroutines.CancellationException) { throw kotlinx.coroutines.CancellationException() }
         catch (_: Throwable) { Result.failure() }
     }
