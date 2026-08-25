@@ -21,6 +21,13 @@ import javax.inject.Inject
 import kotlin.coroutines.coroutineContext
 
 class IndexRepository @Inject constructor(private val dao: AppDao, private val credentials: CredentialStore, private val smbClient: SmbClient) {
+    suspend fun deleteConnection(connectionId: String) {
+        dao.deleteConnection(connectionId)
+        credentials.remove(connectionId)
+    }
+
+    suspend fun deleteRootIndex(connectionId: String) = dao.deleteRootIndex(connectionId)
+
     suspend fun addConnection(name: String, host: String, port: Int, share: String, basePath: String, username: String, password: CharArray, domain: String?, mode: FolderMode): String {
         val id = UUID.randomUUID().toString()
         try {

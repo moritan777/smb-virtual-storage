@@ -4,7 +4,7 @@ Network Storage is a non-root Android app that keeps a local metadata index of s
 
 V1 separates **Index only** (metadata), **On-demand** (future evictable complete-file cache), and **Mirror** (future retained one-way copy). Completed files will later open in external apps through safe Android content URIs. A NAS-side delete may mark metadata missing but will not automatically remove a mirror file.
 
-This repository currently implements Steps 0–2: connection registration, protected credentials, read-only SMBJ listing, Room indexing, and cancellable manual WorkManager scans. Download, external open, mirror copying, and cache eviction intentionally remain unimplemented.
+This repository currently implements Steps 0–3: connection registration, protected credentials, read-only SMBJ listing, Room indexing, cancellable manual WorkManager scans, a Room/Paging indexed browser, local registration/index deletion, and a persisted On-demand cache limit. Download, external open, mirror copying, and cache eviction intentionally remain unimplemented.
 
 ## Storage decision
 
@@ -12,4 +12,4 @@ No file bodies are stored in the current phase. The planned on-demand cache uses
 
 ## Build
 
-Use JDK 17, Gradle 8.10.2, and an Android SDK with API 35, then run `gradle test assembleDebug`.
+Use JDK 17, the included Gradle 8.11.1 wrapper, and an Android SDK with API 35, then run `./gradlew test assembleDebug` (or `gradlew.bat` on Windows).

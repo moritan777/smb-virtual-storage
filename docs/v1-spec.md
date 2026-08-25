@@ -17,7 +17,7 @@ The three modes are distinct:
 - A connection has an ID, display name, host, port, share, root-relative base path, username, protected password, and optional domain.
 - Passwords are encrypted with an Android Keystore key, kept outside Room, never logged, and never shown again.
 
-## Current delivery: Steps 0–2
+## Current delivery: Steps 0–3
 
 This delivery contains one Android app module using Kotlin, Compose, Hilt, Room, WorkManager, coroutines, and SMBJ.
 
@@ -25,9 +25,10 @@ Users can register a connection and root mode, then start or cancel a manual rec
 
 Each scan has a durable run record and progress. Existing entries are never cleared at scan start. Only a fully successful scan marks entries not seen in that run as `remoteExists=false`; failed or cancelled scans retain the old index unchanged except for safely upserted observations. The minimal result view reads Room, not SMB.
 
+The indexed browser pages only the selected `connectionId` and `parentPath` from Room, sorts folders before names, supports hierarchical/back/root navigation, and never contacts SMB. Connection and root-index deletion remove only local records and protected credentials after confirmation. DataStore persists an On-demand-only cache limit as `Long` bytes, defaulting to 10 GiB; mirror data is excluded.
+
 ## Later steps (not in the current delivery)
 
-3. Paged browser.
 4. Complete on-demand download via a bounded buffer and `.part` file.
 5. Read-only content URI and `ACTION_VIEW` external open.
 6. One-way mirror into shared storage; no deletion propagation.
@@ -35,7 +36,7 @@ Each scan has a durable run record and progress. Existing entries are never clea
 8. Connected-network periodic mirror work and foreground handling for long work.
 9. Polish and acceptance testing.
 
-No file download, mirror data copy, cache/LRU, FileProvider, `ACTION_VIEW`, periodic sync, VPN integration, thumbnailing, or streaming is part of Steps 0–2.
+No file download, mirror data copy, cache/LRU enforcement, FileProvider, `ACTION_VIEW`, periodic sync, VPN integration, thumbnailing, or streaming is part of Steps 0–3.
 
 ## Security and errors
 

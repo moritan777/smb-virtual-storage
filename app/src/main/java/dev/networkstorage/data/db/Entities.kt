@@ -18,3 +18,10 @@ data class IndexedEntryEntity(val connectionId: String, val relativePath: String
 
 @Entity(tableName = "scan_runs", foreignKeys = [ForeignKey(entity = ConnectionEntity::class, parentColumns = ["id"], childColumns = ["connectionId"], onDelete = ForeignKey.CASCADE)], indices = [Index("connectionId")])
 data class ScanRunEntity(@PrimaryKey val id: String, val connectionId: String, val status: ScanStatus, val scannedEntries: Long, val startedAt: Long, val finishedAt: Long?, val error: String?)
+
+data class ConnectionSummary(
+    @androidx.room.Embedded val connection: ConnectionEntity,
+    val entryCount: Long,
+    val lastScanAt: Long?,
+    val hasRootRule: Boolean,
+)
