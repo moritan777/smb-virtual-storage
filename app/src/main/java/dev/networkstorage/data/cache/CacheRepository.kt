@@ -19,21 +19,23 @@ import java.io.IOException
 import javax.inject.Inject
 import dagger.hilt.android.qualifiers.ApplicationContext
 
-data class CacheResult(val uri: Uri, val reused: Boolean, val overLimit: Boolean)
+data class CacheResult(val uri: Uri, val reused: Boolean, val evictedBytes: Long = 0)
 
 class CacheRepository @Inject constructor(@ApplicationContext private val context: Context, private val dao: AppDao, private val settings: SettingsRepository, private val smb: SmbClient) {
     private val resolver = context.contentResolver
+
     suspend fun obtain(connectionId: String, relativePath: String, credential: Credential, progress: suspend (Long, Long) -> Unit): CacheResult = withContext(Dispatchers.IO) {
         val entry = requireNotNull(dao.indexedEntry(connectionId, RemotePath.normalize(relativePath)))
         val existing = dao.cacheEntry(connectionId, entry.relativePath)
         if (existing?.state == CacheState.CACHED && existing.remoteSize == entry.size && existing.remoteLastModified == entry.lastModified && documentExists(existing.localDocumentUri)) {
             dao.touchCache(connectionId, entry.relativePath, System.currentTimeMillis())
-            return@withContext CacheResult(Uri.parse(existing.localDocumentUri), true, false)
+            return@withContext CacheResult(Uri.parse(existing.localDocumentUri), true)
         }
         val rootValue = settings.cacheRootUri.first() ?: error("CACHE_ROOT_UNCONFIGURED")
-        val usage = dao.observeCacheUsage().first()
-        val retainedUsage = (usage - (existing?.size ?: 0L)).coerceAtLeast(0L)
-        val overLimit = CachePolicy.exceedsLimit(retainedUsage, entry.size, settings.cacheLimitBytes.first())
+        val limit = settings.cacheLimitBytes.first()
+        if (entry.size > limit) error("FILE_EXCEEDS_CACHE_LIMIT")
+        val retainedUsage = (dao.observeCacheUsage().first() - (existing?.size ?: 0L)).coerceAtLeast(0L)
+        val evictedBytes = evictFor(retainedUsage, entry.size, limit, connectionId, entry.relativePath)
         val root = requireNotNull(DocumentFile.fromTreeUri(context, Uri.parse(rootValue)))
         val parent = ensureDirectories(root, CachePath.directoryParts(connectionId, entry.relativePath))
         val name = entry.name
@@ -52,10 +54,10 @@ class CacheRepository @Inject constructor(@ApplicationContext private val contex
             }
             if (!part.renameTo(name)) throw IOException("PROMOTION_FAILED")
             val completedUri = part.uri
-            if (existing != null && existing.localDocumentUri.isNotBlank() && existing.localDocumentUri != completedUri.toString()) DocumentFile.fromSingleUri(context, Uri.parse(existing.localDocumentUri))?.delete()
+            if (existing != null && existing.localDocumentUri.isNotBlank() && existing.localDocumentUri != completedUri.toString()) deleteDocument(existing.localDocumentUri)
             val finished = System.currentTimeMillis()
             dao.upsertCache(CacheEntryEntity(connectionId, entry.relativePath, completedUri.toString(), copied, entry.size, entry.lastModified, CacheState.CACHED, finished, existing?.createdAt ?: finished, finished))
-            CacheResult(completedUri, false, overLimit)
+            CacheResult(completedUri, false, evictedBytes)
         } catch (error: Throwable) {
             withContext(NonCancellable) {
                 part.delete()
@@ -67,6 +69,44 @@ class CacheRepository @Inject constructor(@ApplicationContext private val contex
         } finally { credential.password.fill('\u0000') }
     }
 
+    suspend fun remove(connectionId: String, relativePath: String): Boolean = withContext(Dispatchers.IO) {
+        val cached = dao.cacheEntry(connectionId, RemotePath.normalize(relativePath)) ?: return@withContext false
+        if (cached.state == CacheState.DOWNLOADING) return@withContext false
+        val deleted = cached.localDocumentUri.isBlank() || deleteDocument(cached.localDocumentUri)
+        if (deleted) dao.deleteCache(connectionId, cached.relativePath)
+        deleted
+    }
+
+    suspend fun clearAll(): Long = withContext(Dispatchers.IO) {
+        var freed = 0L
+        dao.allCachedEntries().forEach { cached ->
+            if (cached.localDocumentUri.isBlank() || deleteDocument(cached.localDocumentUri)) {
+                freed += cached.size
+                dao.deleteCache(cached.connectionId, cached.relativePath)
+            }
+        }
+        freed
+    }
+
+    private suspend fun evictFor(usage: Long, incoming: Long, limit: Long, protectedConnectionId: String, protectedPath: String): Long {
+        var projected = usage
+        var freed = 0L
+        if (!CachePolicy.exceedsLimit(projected, incoming, limit)) return 0L
+        for (cached in dao.lruCacheEntries(protectedConnectionId, protectedPath)) {
+            if (cached.localDocumentUri.isBlank() || deleteDocument(cached.localDocumentUri)) {
+                dao.deleteCache(cached.connectionId, cached.relativePath)
+                projected = (projected - cached.size).coerceAtLeast(0L)
+                freed += cached.size
+                if (!CachePolicy.exceedsLimit(projected, incoming, limit)) return freed
+            }
+        }
+        error("CACHE_LIMIT_CANNOT_BE_SATISFIED")
+    }
+
+    private fun deleteDocument(value: String): Boolean = runCatching {
+        val document = DocumentFile.fromSingleUri(context, Uri.parse(value)) ?: return@runCatching false
+        !document.exists() || document.delete()
+    }.getOrDefault(false)
     private fun documentExists(value: String) = value.isNotBlank() && DocumentFile.fromSingleUri(context, Uri.parse(value))?.exists() == true
     private fun ensureDirectories(root: DocumentFile, parts: List<String>): DocumentFile = parts.fold(root) { parent, raw ->
         val name = RemotePath.join("", raw)
