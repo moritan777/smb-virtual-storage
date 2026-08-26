@@ -1,6 +1,6 @@
 package dev.networkstorage.domain
 
-enum class FolderMode { INDEX_ONLY, ON_DEMAND, MIRROR }
+enum class FolderMode { ON_DEMAND, MIRROR }
 
 enum class ScanStatus { RUNNING, SUCCEEDED, FAILED, CANCELLED }
 
