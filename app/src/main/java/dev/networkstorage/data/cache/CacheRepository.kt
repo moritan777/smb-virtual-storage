@@ -88,6 +88,26 @@ class CacheRepository @Inject constructor(@ApplicationContext private val contex
         freed
     }
 
+    /**
+     * Removes On-demand cache rows whose indexed source disappeared after a successful scan.
+     * SAF deletion is intentionally best-effort: a document is removed from Room only after the
+     * backing document is already absent or DocumentFile.delete() succeeds. A failure therefore
+     * leaves the cache row available for a later cleanup attempt and never turns a successful SMB
+     * scan into a failed scan.
+     */
+    suspend fun cleanupOrphans(connectionId: String): Long = withContext(Dispatchers.IO) {
+        var freed = 0L
+        dao.orphanCacheEntries(connectionId).forEach { cached ->
+            if (cached.state == CacheState.DOWNLOADING) return@forEach
+            val deleted = cached.localDocumentUri.isBlank() || deleteDocument(cached.localDocumentUri)
+            if (deleted) {
+                freed += cached.size
+                dao.deleteCache(cached.connectionId, cached.relativePath)
+            }
+        }
+        freed
+    }
+
     private suspend fun evictFor(usage: Long, incoming: Long, limit: Long, protectedConnectionId: String, protectedPath: String): Long {
         var projected = usage
         var freed = 0L
