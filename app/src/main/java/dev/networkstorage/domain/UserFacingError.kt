@@ -1,5 +1,10 @@
 package dev.networkstorage.domain
 
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import java.util.concurrent.TimeoutException
+
 /** Stable error codes and user-facing copy shared by workers and UI. */
 object UserFacingError {
     const val AUTHENTICATION = "AUTHENTICATION"
@@ -20,15 +25,20 @@ object UserFacingError {
     fun code(error: Throwable): String {
         val smb = error as? SmbFailure
         if (smb != null) return smb.category.name
-        return when (error.message) {
-            CACHE_ROOT_UNCONFIGURED -> CACHE_ROOT_UNCONFIGURED
-            MIRROR_ROOT_UNCONFIGURED -> MIRROR_ROOT_UNCONFIGURED
-            FILE_EXCEEDS_CACHE_LIMIT -> FILE_EXCEEDS_CACHE_LIMIT
-            CACHE_LIMIT_CANNOT_BE_SATISFIED -> CACHE_LIMIT_CANNOT_BE_SATISFIED
-            "CREDENTIAL_UNAVAILABLE" -> CREDENTIAL_UNAVAILABLE
-            "MIRROR_SIZE_MISMATCH", "CACHE_SIZE_MISMATCH" -> SIZE_MISMATCH
-            "MIRROR_REPLACE_FAILED", "MIRROR_PROMOTION_FAILED" -> LOCAL_STORAGE
-            else -> UNKNOWN
+        return when (error) {
+            is UnknownHostException -> HOST_NOT_FOUND
+            is SocketTimeoutException, is TimeoutException -> TIMEOUT
+            is ConnectException -> CONNECTION
+            else -> when (error.message) {
+                CACHE_ROOT_UNCONFIGURED -> CACHE_ROOT_UNCONFIGURED
+                MIRROR_ROOT_UNCONFIGURED -> MIRROR_ROOT_UNCONFIGURED
+                FILE_EXCEEDS_CACHE_LIMIT -> FILE_EXCEEDS_CACHE_LIMIT
+                CACHE_LIMIT_CANNOT_BE_SATISFIED -> CACHE_LIMIT_CANNOT_BE_SATISFIED
+                "CREDENTIAL_UNAVAILABLE" -> CREDENTIAL_UNAVAILABLE
+                "MIRROR_SIZE_MISMATCH", "CACHE_SIZE_MISMATCH" -> SIZE_MISMATCH
+                "MIRROR_REPLACE_FAILED", "MIRROR_PROMOTION_FAILED" -> LOCAL_STORAGE
+                else -> UNKNOWN
+            }
         }
     }
 
