@@ -17,6 +17,6 @@ class Converters {
     @TypeConverter fun cacheState(value: CacheState) = value.name
 }
 
-@Database(entities = [ConnectionEntity::class, FolderRuleEntity::class, IndexedEntryEntity::class, ScanRunEntity::class, CacheEntryEntity::class], version = 2, exportSchema = true)
+@Database(entities = [ConnectionEntity::class, FolderRuleEntity::class, IndexedEntryEntity::class, ScanRunEntity::class, CacheEntryEntity::class], version = 3, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() { abstract fun dao(): AppDao }
