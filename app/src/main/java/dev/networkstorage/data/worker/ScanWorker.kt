@@ -9,6 +9,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import dev.networkstorage.data.IndexRepository
 import dev.networkstorage.data.cache.CacheRepository
+import dev.networkstorage.domain.UserFacingError
 
 @HiltWorker
 class ScanWorker @AssistedInject constructor(
@@ -18,7 +19,8 @@ class ScanWorker @AssistedInject constructor(
     private val cacheRepository: CacheRepository,
 ) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result {
-        val connectionId = inputData.getString(KEY_CONNECTION_ID) ?: return Result.failure()
+        val connectionId = inputData.getString(KEY_CONNECTION_ID)
+            ?: return Result.failure(error(UserFacingError.UNKNOWN))
         return try {
             var finalCount = 0L
             repository.scan(connectionId, id.toString()) { count, path ->
@@ -34,17 +36,24 @@ class ScanWorker @AssistedInject constructor(
                     .putLong(KEY_CLEANED_CACHE_BYTES, cleanedBytes)
                     .build()
             )
-        } catch (_: kotlinx.coroutines.CancellationException) {
-            throw kotlinx.coroutines.CancellationException()
-        } catch (_: Throwable) {
-            Result.failure()
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (throwable: Throwable) {
+            Result.failure(error(UserFacingError.code(throwable)))
         }
     }
+
+    private fun error(code: String) = Data.Builder()
+        .putString(KEY_ERROR_CODE, code)
+        .putString(KEY_ERROR_MESSAGE, UserFacingError.message(code))
+        .build()
 
     companion object {
         const val KEY_CONNECTION_ID = "connection_id"
         const val KEY_COUNT = "entry_count"
         const val KEY_PATH = "current_path"
         const val KEY_CLEANED_CACHE_BYTES = "cleaned_cache_bytes"
+        const val KEY_ERROR_CODE = "error_code"
+        const val KEY_ERROR_MESSAGE = "error_message"
     }
 }
