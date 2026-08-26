@@ -25,6 +25,7 @@ import dev.networkstorage.data.db.ConnectionSummary
 import dev.networkstorage.data.mirror.MirrorDiffItem
 import dev.networkstorage.data.mirror.MirrorRepository
 import dev.networkstorage.data.mirror.MirrorSyncPolicy
+import dev.networkstorage.data.mirror.MirrorSyncScheduler
 import dev.networkstorage.data.settings.SettingsRepository
 import dev.networkstorage.data.settings.StorageRootKind
 import dev.networkstorage.data.smb.SmbClient
@@ -67,7 +68,7 @@ data class RemotePickerState(val visible: Boolean=false, val share: String?=null
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
-class MainViewModel @Inject constructor(application: Application, private val repository: IndexRepository, private val dao: AppDao, private val settings: SettingsRepository, private val smb: SmbClient, private val credentials: CredentialStore, private val externalOpen: ExternalOpenService, private val cacheRepository: CacheRepository, private val mirrorRepository: MirrorRepository) : AndroidViewModel(application) {
+class MainViewModel @Inject constructor(application: Application, private val repository: IndexRepository, private val dao: AppDao, private val settings: SettingsRepository, private val smb: SmbClient, private val credentials: CredentialStore, private val externalOpen: ExternalOpenService, private val cacheRepository: CacheRepository, private val mirrorRepository: MirrorRepository, private val mirrorSyncScheduler: MirrorSyncScheduler) : AndroidViewModel(application) {
     private val workManager = WorkManager.getInstance(application)
     val screen = MutableStateFlow(AppScreen.CONNECTIONS)
     val connections = dao.observeConnectionSummaries().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -76,6 +77,8 @@ class MainViewModel @Inject constructor(application: Application, private val re
     val cacheLimitBytes = settings.cacheLimitBytes.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsRepository.DEFAULT_CACHE_LIMIT_BYTES)
     val cacheRootUri = settings.cacheRootUri.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val mirrorRootUri = settings.mirrorRootUri.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val automaticMirrorSyncEnabled = settings.automaticMirrorSyncEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val automaticMirrorSyncIntervalMinutes = settings.automaticMirrorSyncIntervalMinutes.stateIn(viewModelScope, SharingStarted.Eagerly, SettingsRepository.DEFAULT_AUTOMATIC_MIRROR_SYNC_INTERVAL_MINUTES)
     val cacheUsage = dao.observeCacheUsage().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
     val download = MutableStateFlow(ScanUiState())
     val mirror = MutableStateFlow(MirrorUiState())
@@ -131,6 +134,21 @@ class MainViewModel @Inject constructor(application: Application, private val re
     fun deleteRootIndex(connection:ConnectionSummary)=viewModelScope.launch { workManager.cancelUniqueWork("manual-scan-${connection.connection.id}"); runCatching { repository.deleteRootIndex(connection.connection.id) }.onSuccess { message.value="Local index target deleted" }.onFailure { message.value="Could not delete the local index target" } }
     fun setCacheLimitGib(input:String)=viewModelScope.launch { SettingsRepository.gibToBytes(input).onSuccess { bytes->settings.setCacheLimitBytes(bytes); message.value="Cache limit saved" }.onFailure { message.value="Enter a whole number of at least 1 GB" } }
     fun saveStorageRoot(kind:StorageRootKind,uri:Uri)=viewModelScope.launch { runCatching { settings.setStorageRoot(kind,uri.toString()) }.onSuccess { message.value="Storage folder saved; existing files were not moved" }.onFailure { message.value="Cache and Mirror folders must not be the same or nested" } }
+    fun setAutomaticMirrorSyncEnabled(enabled: Boolean)=viewModelScope.launch {
+        if (enabled && mirrorRootUri.value == null) { message.value="Set the Mirror folder before enabling automatic sync"; return@launch }
+        runCatching {
+            settings.setAutomaticMirrorSyncEnabled(enabled)
+            if (enabled) mirrorSyncScheduler.schedule(automaticMirrorSyncIntervalMinutes.value) else mirrorSyncScheduler.cancel()
+        }.onSuccess { message.value=if(enabled) "Automatic Mirror sync enabled" else "Automatic Mirror sync disabled" }
+            .onFailure { message.value="Could not update automatic Mirror sync" }
+    }
+    fun setAutomaticMirrorSyncIntervalMinutes(minutes: Long)=viewModelScope.launch {
+        runCatching {
+            settings.setAutomaticMirrorSyncIntervalMinutes(minutes)
+            if (automaticMirrorSyncEnabled.value) mirrorSyncScheduler.schedule(minutes)
+        }.onSuccess { message.value="Automatic sync interval saved" }
+            .onFailure { message.value="Could not update automatic sync interval" }
+    }
     fun removeCache(item: BrowserItem)=viewModelScope.launch { val id=selectedConnection.value?.connection?.id?:return@launch; runCatching { cacheRepository.remove(id,item.relativePath) }.onSuccess { message.value=if(it) "Cached copy removed" else "Cache could not be removed" }.onFailure { message.value="Cache could not be removed" } }
     fun clearCache()=viewModelScope.launch { if(download.value.state?.isFinished==false) { message.value="Wait for the current download to finish or cancel it first"; return@launch }; runCatching { cacheRepository.clearAll() }.onSuccess { message.value="Cache cleared (${it} bytes freed)" }.onFailure { message.value="Some cached files could not be removed" } }
 
