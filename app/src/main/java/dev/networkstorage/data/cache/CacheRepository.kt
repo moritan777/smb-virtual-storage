@@ -24,6 +24,17 @@ data class CacheResult(val uri: Uri, val reused: Boolean, val evictedBytes: Long
 class CacheRepository @Inject constructor(@ApplicationContext private val context: Context, private val dao: AppDao, private val settings: SettingsRepository, private val smb: SmbClient) {
     private val resolver = context.contentResolver
 
+    suspend fun cachedUriIfValid(connectionId: String, relativePath: String): Uri? = withContext(Dispatchers.IO) {
+        val normalized = RemotePath.normalize(relativePath)
+        val entry = dao.indexedEntry(connectionId, normalized) ?: return@withContext null
+        val cached = dao.cacheEntry(connectionId, normalized) ?: return@withContext null
+        if (cached.state != CacheState.CACHED) return@withContext null
+        if (cached.remoteSize != entry.size || cached.remoteLastModified != entry.lastModified) return@withContext null
+        if (!documentExists(cached.localDocumentUri)) return@withContext null
+        dao.touchCache(connectionId, normalized, System.currentTimeMillis())
+        Uri.parse(cached.localDocumentUri)
+    }
+
     suspend fun obtain(connectionId: String, relativePath: String, credential: Credential, progress: suspend (Long, Long) -> Unit): CacheResult = withContext(Dispatchers.IO) {
         val entry = requireNotNull(dao.indexedEntry(connectionId, RemotePath.normalize(relativePath)))
         val existing = dao.cacheEntry(connectionId, entry.relativePath)
@@ -88,13 +99,6 @@ class CacheRepository @Inject constructor(@ApplicationContext private val contex
         freed
     }
 
-    /**
-     * Removes On-demand cache rows whose indexed source disappeared after a successful scan.
-     * SAF deletion is intentionally best-effort: a document is removed from Room only after the
-     * backing document is already absent or DocumentFile.delete() succeeds. A failure therefore
-     * leaves the cache row available for a later cleanup attempt and never turns a successful SMB
-     * scan into a failed scan.
-     */
     suspend fun cleanupOrphans(connectionId: String): Long = withContext(Dispatchers.IO) {
         var freed = 0L
         dao.orphanCacheEntries(connectionId).forEach { cached ->
