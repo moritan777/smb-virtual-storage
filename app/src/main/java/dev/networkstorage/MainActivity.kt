@@ -16,9 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -50,9 +48,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import dagger.hilt.android.AndroidEntryPoint
-import dev.networkstorage.data.mirror.MirrorDiffItem
-import dev.networkstorage.data.mirror.MirrorDiffState
-import dev.networkstorage.data.mirror.MirrorSyncPolicy
 import dev.networkstorage.data.settings.SettingsRepository
 import dev.networkstorage.data.settings.StorageRootKind
 import dev.networkstorage.domain.FolderMode
@@ -106,34 +101,6 @@ private fun NetworkStorageScreen(viewModel: MainViewModel = hiltViewModel()) {
                 AppScreen.MIRROR -> SyncScreen(viewModel)
                 AppScreen.SETTINGS -> SettingsScreen(viewModel)
             }
-        }
-    }
-}
-
-@Composable
-private fun SyncScreen(viewModel: MainViewModel) {
-    val connection by viewModel.selectedConnection.collectAsState(); val mirror by viewModel.mirror.collectAsState(); val root by viewModel.mirrorRootUri.collectAsState()
-    val syncable = mirror.items.count { MirrorSyncPolicy.canCopyRemoteToLocal(it.state) }
-    Column(Modifier.fillMaxSize().padding(horizontal = ScreenPadding)) {
-        Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Column(Modifier.weight(1f)) { Text("Sync", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold); Text(connection?.connection?.name ?: "No connection", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }; TextButton(onClick = viewModel::showConnections) { Text("Close") } }
-        Surface(shape = RowShape, color = MaterialTheme.colorScheme.surfaceContainerLow) { Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("Mirror storage", style = MaterialTheme.typography.labelMedium); Text(friendlyStorageRoot(root), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { OutlinedButton(onClick = viewModel::compareMirror, enabled = !mirror.loading && mirror.state?.isFinished != false) { Text("↻ Compare") }; Button(onClick = viewModel::syncAllMirror, enabled = syncable > 0 && mirror.state?.isFinished != false) { Text("↓ Sync all ($syncable)") } } } }
-        if (mirror.loading) { Spacer(Modifier.height(6.dp)); LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Comparing NAS index and Mirror folder…", style = MaterialTheme.typography.bodySmall) }
-        mirror.state?.takeIf { !it.isFinished }?.let { Spacer(Modifier.height(6.dp)); Surface(shape = RowShape, color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)) { Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("Syncing ${mirror.currentPath.substringAfterLast('/')}"); LinearProgressIndicator(progress = { usageRatio(mirror.copied, mirror.currentTotal) }, modifier = Modifier.fillMaxWidth()); Text("${mirror.completedFiles}/${mirror.totalFiles} files  ${formatBytes(mirror.copied)}/${formatBytes(mirror.currentTotal)}", style = MaterialTheme.typography.bodySmall); TextButton(onClick = viewModel::cancelMirrorSync) { Text("Cancel") } } } }
-        Spacer(Modifier.height(6.dp))
-        if (!mirror.loading && mirror.items.isEmpty()) Text("No differences found. Tap Compare after scanning the NAS.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) { items(mirror.items, key = { it.relativePath }) { item -> MirrorRow(item, mirror.state?.isFinished != false) { viewModel.syncMirror(item) } } }
-    }
-}
-
-@Composable
-private fun MirrorRow(item: MirrorDiffItem, idle: Boolean, onSync: () -> Unit) {
-    val label = when (item.state) { MirrorDiffState.REMOTE_ONLY -> "NAS only"; MirrorDiffState.LOCAL_ONLY -> "Mirror only"; MirrorDiffState.SAME -> "Same"; MirrorDiffState.REMOTE_NEWER -> "NAS newer"; MirrorDiffState.LOCAL_NEWER -> "Mirror newer" }
-    val icon = when (item.state) { MirrorDiffState.REMOTE_ONLY -> "☁"; MirrorDiffState.LOCAL_ONLY -> "▣"; MirrorDiffState.SAME -> "✓"; MirrorDiffState.REMOTE_NEWER -> "↓"; MirrorDiffState.LOCAL_NEWER -> "↑" }
-    Surface(shape = RowShape, color = MaterialTheme.colorScheme.surfaceContainerLow) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) {
-            Text(icon, style = MaterialTheme.typography.titleMedium); Spacer(Modifier.width(8.dp)); Column(Modifier.weight(1f)) { Text(item.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("$label • NAS ${item.remoteSize?.let(::formatBytes) ?: "—"} • Mirror ${item.localSize?.let(::formatBytes) ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            if (MirrorSyncPolicy.canCopyRemoteToLocal(item.state)) TextButton(onClick = onSync, enabled = idle) { Text("Sync") }
         }
     }
 }
@@ -211,7 +178,7 @@ private fun ConnectionEditorScreen(viewModel: MainViewModel) {
     val picker by viewModel.remotePicker.collectAsState(); if (picker.visible) AlertDialog(onDismissRequest = viewModel::closeRemotePicker, title = { Text("Network folder") }, text = { Column { Text("${editor.host} / ${picker.share}${picker.path.takeIf(String::isNotBlank)?.let { " / $it" }.orEmpty()}"); if (picker.loading) Text("Loading…"); picker.error?.let { Text("Could not browse: $it", color = MaterialTheme.colorScheme.error) }; if (picker.path.isNotEmpty()) Text("← One level up", Modifier.fillMaxWidth().clickable { viewModel.browsePickerFolder(password, FolderNavigation.parent(picker.path)) }.padding(8.dp)); picker.folders.forEach { folder -> Text("📁 ${folder.substringAfterLast('/')} ", Modifier.fillMaxWidth().clickable { viewModel.browsePickerFolder(password, folder) }.padding(8.dp)) } } }, dismissButton = { TextButton(onClick = viewModel::closeRemotePicker) { Text("Cancel") } }, confirmButton = { TextButton(onClick = viewModel::usePickerFolder) { Text("Use this folder") } })
 }
 
-private fun friendlyStorageRoot(uri: String?): String = uri?.replace("content://com.android.externalstorage.documents/tree/primary%3A", "Internal storage / ") ?: "Not set"
+internal fun friendlyStorageRoot(uri: String?): String = uri?.replace("content://com.android.externalstorage.documents/tree/primary%3A", "Internal storage / ") ?: "Not set"
 internal fun formatBytes(bytes: Long): String = when { bytes >= SettingsRepository.BYTES_PER_GIB -> "${bytes / SettingsRepository.BYTES_PER_GIB} GB"; bytes >= 1024L * 1024L -> "${bytes / (1024L * 1024L)} MB"; bytes >= 1024L -> "${bytes / 1024L} KB"; else -> "$bytes B" }
 internal fun usageRatio(used: Long, total: Long): Float = if (total <= 0L) 0f else (used.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
 private fun automaticSyncIntervalLabel(minutes: Long): String = when (minutes) { 15L -> "15 min"; 60L -> "1 h"; 360L -> "6 h"; 1440L -> "24 h"; else -> "$minutes min" }
