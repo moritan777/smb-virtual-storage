@@ -62,7 +62,7 @@ class MainViewModel @Inject constructor(application: Application, private val re
     val cacheRootUri = settings.cacheRootUri.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val mirrorRootUri = settings.mirrorRootUri.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val cacheUsage = dao.observeCacheUsage().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
-    val download = MutableStateFlow<ScanUiState>()
+    val download = MutableStateFlow(ScanUiState())
     val remotePicker = MutableStateFlow(RemotePickerState())
     val scan = MutableStateFlow(ScanUiState())
     val message = MutableStateFlow<String?>(null)
