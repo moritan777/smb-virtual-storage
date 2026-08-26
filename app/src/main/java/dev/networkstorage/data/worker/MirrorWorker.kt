@@ -19,6 +19,7 @@ class MirrorWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         val connectionId = inputData.getString(KEY_CONNECTION_ID) ?: return Result.failure(error("INVALID_CONNECTION"))
         val requestedPath = inputData.getString(KEY_PATH)
+        setForeground(MirrorForeground.info(applicationContext, "Mirror sync", "Preparing Mirror files…"))
         return try {
             val candidates = mirrorRepository.compare(connectionId).filter {
                 (requestedPath == null || it.relativePath == requestedPath) &&
@@ -28,6 +29,8 @@ class MirrorWorker @AssistedInject constructor(
             var copiedBytes = 0L
             candidates.forEach { item ->
                 val total = item.remoteSize ?: 0L
+                var lastForegroundPercent = -1
+                setForeground(MirrorForeground.info(applicationContext, "Mirror sync", item.name, 0L, total))
                 mirrorRepository.copyRemoteToLocal(connectionId, item.relativePath) { copied, _ ->
                     setProgress(
                         Data.Builder()
@@ -38,6 +41,11 @@ class MirrorWorker @AssistedInject constructor(
                             .putInt(KEY_TOTAL_FILES, candidates.size)
                             .build()
                     )
+                    val percent = if (total > 0L) ((copied.toDouble() / total.toDouble()) * 100.0).toInt().coerceIn(0, 100) else 100
+                    if (percent == 100 || percent >= lastForegroundPercent + 5) {
+                        lastForegroundPercent = percent
+                        setForeground(MirrorForeground.info(applicationContext, "Mirror sync", item.name, copied, total))
+                    }
                 }
                 completed += 1
                 copiedBytes += total
@@ -49,8 +57,8 @@ class MirrorWorker @AssistedInject constructor(
                     .putLong(KEY_COPIED_BYTES, copiedBytes)
                     .build()
             )
-        } catch (_: kotlinx.coroutines.CancellationException) {
-            throw kotlinx.coroutines.CancellationException()
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (error: Throwable) {
             Result.failure(error(error.message ?: "MIRROR_COPY_FAILED"))
         }
