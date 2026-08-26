@@ -9,7 +9,6 @@ import java.io.InputStream
 interface RemoteReadHandle : Closeable { val input: InputStream }
 
 interface SmbClient {
-    suspend fun listShares(connection: ConnectionConfig, credential: Credential): List<String>
     suspend fun list(connection: ConnectionConfig, credential: Credential, relativeDirectory: String): List<RemoteEntry>
     suspend fun openRead(connection: ConnectionConfig, credential: Credential, relativePath: String): RemoteReadHandle
 }
