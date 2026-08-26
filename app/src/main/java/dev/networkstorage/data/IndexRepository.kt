@@ -21,6 +21,16 @@ import javax.inject.Inject
 import kotlin.coroutines.coroutineContext
 
 class IndexRepository @Inject constructor(private val dao: AppDao, private val credentials: CredentialStore, private val smbClient: SmbClient) {
+    suspend fun updateConnection(id: String, name: String, host: String, port: Int, share: String, basePath: String, username: String, replacementPassword: CharArray?, domain: String?, mode: FolderMode) {
+        try {
+            val old = requireNotNull(dao.connection(id))
+            require(name.isNotBlank() && host.isNotBlank() && share.isNotBlank() && username.isNotBlank() && port in 1..65535)
+            val updated = old.copy(name=name.trim(), host=host.trim(), port=port, share=share, basePath=RemotePath.normalize(basePath), username=username.trim(), domain=domain?.takeIf(String::isNotBlank), rootMode=mode)
+            dao.updateConnection(updated)
+            dao.saveRootRule(FolderRuleEntity(id, "", mode))
+            replacementPassword?.takeIf { it.isNotEmpty() }?.let { credentials.put(id, it) }
+        } finally { replacementPassword?.fill('\u0000') }
+    }
     suspend fun deleteConnection(connectionId: String) {
         dao.deleteConnection(connectionId)
         credentials.remove(connectionId)

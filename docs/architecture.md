@@ -19,3 +19,7 @@ Connection deletion is a local Room cascade followed by credential cleanup; root
 `SmbClient.openRead` is the only new protocol capability. A unique WorkManager chain serializes downloads. `CacheRepository` maps normalized paths beneath a connection-ID directory in the selected SAF tree, copies with a 64 KiB buffer into `.part`, validates size, promotes, and only then commits `CacheEntryEntity`. Cancellation/failure removes partial data and preserves an older completed cache where present.
 
 Cache and Mirror tree URIs are separate DataStore values; equal/nested document IDs are rejected where the provider exposes comparable IDs. Mirror synchronization remains absent. Valid cached document URIs are touched for future LRU and opened with MIME-specific `ACTION_VIEW` plus read-only permission.
+
+## Step 4.1 presentation
+
+Screen state explicitly separates Connections, Connection Editor, Browser, and Settings. The editor never reads a saved password into UI state: an empty edit preserves the credential and an explicit replacement updates it. The Network folder picker uses read-only share/directory listing and maps the selected share root or nested relative path back to the existing `share`/`basePath` model. Browser presentation reduces each row to folder navigation or cache icon, name, and file size while retaining the Room paging source.

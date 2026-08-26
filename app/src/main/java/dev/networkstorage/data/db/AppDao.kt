@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Update
 import androidx.paging.PagingSource
 import dev.networkstorage.domain.ScanStatus
 import kotlinx.coroutines.flow.Flow
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface AppDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun saveConnection(value: ConnectionEntity)
+    @Update suspend fun updateConnection(value: ConnectionEntity)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun saveRootRule(value: FolderRuleEntity)
     @Query("SELECT * FROM connections ORDER BY name") fun observeConnections(): Flow<List<ConnectionEntity>>
     @Query("SELECT * FROM connections WHERE id = :id") suspend fun connection(id: String): ConnectionEntity?
