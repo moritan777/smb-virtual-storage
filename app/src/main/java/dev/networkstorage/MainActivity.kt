@@ -1,4 +1,4 @@
-﻿package dev.networkstorage
+package dev.networkstorage
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -87,19 +87,19 @@ private fun ConnectionsScreen(viewModel: MainViewModel) {
     var deleteConnection by remember { mutableStateOf<ConnectionSummary?>(null) }
     var deleteIndex by remember { mutableStateOf<ConnectionSummary?>(null) }
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Network Storage", style = MaterialTheme.typography.headlineMedium); FloatingActionButton(viewModel::openAddConnection) { Text("・・) } }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Network Storage", style = MaterialTheme.typography.headlineMedium); FloatingActionButton(viewModel::openAddConnection) { Text("+") } }
         LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(connections.size, key = { connections[it].connection.id }) { index ->
             val summary = connections[index]
             var menu by remember { mutableStateOf(false) }
             Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                Text("箕 ${summary.connection.name}", style = MaterialTheme.typography.titleMedium)
-                Text("刀 ${summary.connection.share}${summary.connection.basePath.takeIf(String::isNotBlank)?.let { " / $it" }.orEmpty()}")
-                Text("Last scan: ${summary.lastScanAt?.let { DateFormat.getDateTimeInstance().format(Date(it)) } ?: "Never"} ﾂｷ ${summary.entryCount} entries")
+                Text("${summary.connection.name}", style = MaterialTheme.typography.titleMedium)
+                Text("${summary.connection.share}${summary.connection.basePath.takeIf(String::isNotBlank)?.let { " / $it" }.orEmpty()}")
+                Text("Last scan: ${summary.lastScanAt?.let { DateFormat.getDateTimeInstance().format(Date(it)) } ?: "Never"} · ${summary.entryCount} entries")
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Button(onClick = { viewModel.browse(summary) }) { Text("Open") }
-                    Button(onClick = { viewModel.startScan(summary) }, enabled = summary.hasRootRule) { Text("売 Scan") }
-                    TextButton(onClick = { menu = true }) { Text("站ｮ") }
+                    Button(onClick = { viewModel.startScan(summary) }, enabled = summary.hasRootRule) { Text("Scan") }
+                    TextButton(onClick = { menu = true }) { Text("⋮") }
                     DropdownMenu(menu, { menu=false }) {
                         DropdownMenuItem({ Text("Edit") }, { menu=false; viewModel.openEditConnection(summary) })
                         DropdownMenuItem({ Text("Scan") }, { menu=false; viewModel.startScan(summary) }, enabled=summary.hasRootRule)
@@ -107,7 +107,7 @@ private fun ConnectionsScreen(viewModel: MainViewModel) {
                         DropdownMenuItem({ Text("Delete connection") }, { menu=false; deleteConnection=summary })
                     }
                 }
-                if (scan.ownerId == summary.connection.id && scan.state?.isFinished == false) { Text("Scanning窶ｦ ${scan.count} entries"); TextButton(viewModel::cancelScan) { Text("Cancel") } }
+                if (scan.ownerId == summary.connection.id && scan.state?.isFinished == false) { Text("Scanning… ${scan.count} entries"); TextButton(viewModel::cancelScan) { Text("Cancel") } }
             }
         }
         }
@@ -126,8 +126,8 @@ private fun BrowserScreen(viewModel: MainViewModel) {
         val root = connection?.connection?.let { listOf(it.share, it.basePath).filter(String::isNotBlank).joinToString(" / ") }.orEmpty()
         Text(path.substringAfterLast('/', root.substringAfterLast('/', connection?.connection?.name ?: "Select a connection")), style = MaterialTheme.typography.headlineSmall)
         Text(listOfNotNull(connection?.connection?.name, root.takeIf(String::isNotEmpty), path.takeIf(String::isNotEmpty)).joinToString(" / "))
-        if (path.isNotEmpty()) Text("筮・One level up", Modifier.fillMaxWidth().clickable { viewModel.browserBack() }.padding(vertical = 12.dp))
-        download.state?.takeIf { !it.isFinished }?.let { Text("竢ｳ ${download.path}: ${formatBytes(download.count)} / ${formatBytes(download.total)} (${downloadPercent(download.count, download.total)}%)"); Button(viewModel::cancelDownload) { Text("Cancel download") } }
+        if (path.isNotEmpty()) Text("↑ One level up", Modifier.fillMaxWidth().clickable { viewModel.browserBack() }.padding(vertical = 12.dp))
+        download.state?.takeIf { !it.isFinished }?.let { Text("↓ ${download.path}: ${formatBytes(download.count)} / ${formatBytes(download.total)} (${downloadPercent(download.count, download.total)}%)"); Button(viewModel::cancelDownload) { Text("Cancel download") } }
         LazyColumn(Modifier.fillMaxSize()) {
             items(items.itemCount) { index -> items[index]?.let { BrowserRow(it) { viewModel.openFolder(it) } } }
         }
@@ -138,8 +138,8 @@ private fun BrowserScreen(viewModel: MainViewModel) {
 private fun BrowserRow(item: BrowserItem, onClick: () -> Unit) {
     val missingColor = if (item.remoteExists) Color.Unspecified else MaterialTheme.colorScheme.error
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp)) {
-        val icon = if (item.isDirectory) "刀" else BrowserPresentation.stateIcon(item.localState)
-        Text("$icon ${item.name}${if (item.isDirectory) "    窶ｺ" else ""}", color = missingColor, style = MaterialTheme.typography.titleMedium)
+        val icon = if (item.isDirectory) "📁" else BrowserPresentation.stateIcon(item.localState)
+        Text("$icon ${item.name}${if (item.isDirectory) "    ›" else ""}", color = missingColor, style = MaterialTheme.typography.titleMedium)
         if (!item.isDirectory) Text(formatBytes(item.size), color = missingColor)
     }
 }
@@ -159,7 +159,7 @@ private fun SettingsScreen(viewModel: MainViewModel) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium)
         Text("On-demand cache", style=MaterialTheme.typography.titleLarge)
         Text("Storage folder: ${cacheRoot ?: "Not set"}")
-        Button(onClick = { cachePicker.launch(null) }) { Text("刀 Choose cache folder") }
+        Button(onClick = { cachePicker.launch(null) }) { Text("📁 Choose cache folder") }
         Text("Cache limit: ${bytes / SettingsRepository.BYTES_PER_GIB} GB")
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { SettingsRepository.PRESET_GIB.forEach { gib -> Button(onClick = { viewModel.setCacheLimitGib(gib.toString()) }) { Text("$gib GB") } } }
         OutlinedTextField(custom, { custom = it }, label = { Text("Custom GB (minimum 1)") }, singleLine = true)
@@ -169,7 +169,7 @@ private fun SettingsScreen(viewModel: MainViewModel) {
         HorizontalDivider()
         Text("Mirror", style=MaterialTheme.typography.titleLarge)
         Text("Storage folder: ${mirrorRoot ?: "Not set"}")
-        Button(onClick = { mirrorPicker.launch(null) }) { Text("刀 Choose Mirror folder") }
+        Button(onClick = { mirrorPicker.launch(null) }) { Text("📁 Choose Mirror folder") }
         Text("The system picker can create folders. Existing files are not moved when a destination changes.")
     }
 }
@@ -181,7 +181,7 @@ private fun ConnectionEditorScreen(viewModel: MainViewModel) {
     val editor by viewModel.editor.collectAsState()
     var password by remember(editor.id) { mutableStateOf("") }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth()) { TextButton(viewModel::showConnections) { Text("竊・) }; Text(if (editor.id == null) "Add connection" else "Edit connection", style=MaterialTheme.typography.headlineSmall) }
+        Row(Modifier.fillMaxWidth()) { TextButton(viewModel::showConnections) { Text("←") }; Text(if (editor.id == null) "Add connection" else "Edit connection", style=MaterialTheme.typography.headlineSmall) }
         OutlinedTextField(editor.name, { viewModel.updateEditor(editor.copy(name=it)) }, label={Text("Name")}, modifier=Modifier.fillMaxWidth(), singleLine=true)
         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(editor.host, { viewModel.updateEditor(editor.copy(host=it)) }, label={Text("Host")}, modifier=Modifier.weight(3f), singleLine=true)
@@ -192,24 +192,22 @@ private fun ConnectionEditorScreen(viewModel: MainViewModel) {
             OutlinedTextField(password, { password=it }, label={Text(if (editor.id == null) "Password" else "Password (saved)")}, placeholder={if(editor.id != null) Text("Leave blank to keep")}, visualTransformation=PasswordVisualTransformation(), modifier=Modifier.weight(1f), singleLine=true)
         }
         OutlinedTextField(editor.domain, { viewModel.updateEditor(editor.copy(domain=it)) }, label={Text("Domain (optional)")}, modifier=Modifier.fillMaxWidth(), singleLine=true)
-        Row { OutlinedTextField(editor.networkFolder, {}, readOnly=true, label={Text("Network folder")}, modifier=Modifier.weight(1f)); Button({ viewModel.openNetworkFolderPicker(password) }) { Text("刀") } }
+        OutlinedTextField(editor.share, { viewModel.updateEditor(editor.copy(share=it, basePath="")) }, label={Text("Share")}, placeholder={Text("e.g. documents")}, modifier=Modifier.fillMaxWidth(), singleLine=true)
+        Row { OutlinedTextField(editor.networkFolder, {}, readOnly=true, label={Text("Network folder")}, modifier=Modifier.weight(1f)); Button({ viewModel.openNetworkFolderPicker(password) }, enabled=editor.share.isNotBlank()) { Text("📁") } }
+        Text("Enter the SMB share name, then use the folder button to choose any folder inside that share.")
         Text("Mode")
         Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) { FolderMode.entries.forEach { candidate -> Button({ viewModel.updateEditor(editor.copy(mode=candidate)) }, enabled=editor.mode != candidate) { Text(candidate.name.replace('_',' ').lowercase()) } } }
         Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.End) { TextButton(viewModel::showConnections) { Text("Cancel") }; Button({ viewModel.saveEditor(password); password="" }, enabled=editor.share.isNotBlank()) { Text("Save") } }
     }
     val picker by viewModel.remotePicker.collectAsState()
     if (picker.visible) AlertDialog(onDismissRequest=viewModel::closeRemotePicker, title={Text("Network folder")}, text={Column {
-        Text(if (picker.share == null) editor.host else "${editor.host} / ${picker.share}${picker.path.takeIf(String::isNotBlank)?.let { " / $it" }.orEmpty()}")
-        if (picker.loading) Text("Loading窶ｦ")
+        Text("${editor.host} / ${picker.share}${picker.path.takeIf(String::isNotBlank)?.let { " / $it" }.orEmpty()}")
+        if (picker.loading) Text("Loading…")
         picker.error?.let { Text("Could not browse: $it", color=MaterialTheme.colorScheme.error) }
-        if (picker.share == null) picker.shares.forEach { share -> Text("刀 $share", Modifier.fillMaxWidth().clickable { viewModel.selectPickerShare(share, password) }.padding(10.dp)) }
-        else {
-            Text("筮・One level up", Modifier.fillMaxWidth().clickable { if (picker.path.isEmpty()) viewModel.openNetworkFolderPicker(password) else viewModel.browsePickerFolder(password, FolderNavigation.parent(picker.path)) }.padding(10.dp))
-            picker.folders.forEach { folder -> Text("刀 ${folder.substringAfterLast('/')}", Modifier.fillMaxWidth().clickable { viewModel.browsePickerFolder(password, folder) }.padding(10.dp)) }
-        }
-    }}, dismissButton={TextButton(viewModel::closeRemotePicker){Text("Cancel")}}, confirmButton={if(picker.share != null) TextButton(viewModel::usePickerFolder){Text("Use this folder")}})
+        if (picker.path.isNotEmpty()) Text("↑ One level up", Modifier.fillMaxWidth().clickable { viewModel.browsePickerFolder(password, FolderNavigation.parent(picker.path)) }.padding(10.dp))
+        picker.folders.forEach { folder -> Text("📁 ${folder.substringAfterLast('/')}", Modifier.fillMaxWidth().clickable { viewModel.browsePickerFolder(password, folder) }.padding(10.dp)) }
+    }}, dismissButton={TextButton(viewModel::closeRemotePicker){Text("Cancel")}}, confirmButton={TextButton(viewModel::usePickerFolder){Text("Use this folder")}})
 }
 
 private fun formatBytes(bytes: Long): String = when { bytes >= SettingsRepository.BYTES_PER_GIB -> "${bytes / SettingsRepository.BYTES_PER_GIB} GB"; bytes >= 1024L * 1024L -> "${bytes / (1024L * 1024L)} MB"; bytes >= 1024L -> "${bytes / 1024L} KB"; else -> "$bytes B" }
 private fun downloadPercent(copied: Long, total: Long) = if (total <= 0) 100 else ((copied.toDouble() / total.toDouble()) * 100.0).toInt().coerceIn(0, 100)
-
