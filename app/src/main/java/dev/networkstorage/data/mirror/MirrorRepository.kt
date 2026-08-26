@@ -44,6 +44,16 @@ class MirrorRepository @Inject constructor(
         }
     }
 
+    /** Returns the local Mirror URI only when it still matches the indexed NAS metadata. */
+    suspend fun mirroredUriIfCurrent(connectionId: String, relativePath: String): Uri? = withContext(Dispatchers.IO) {
+        val normalized = RemotePath.normalize(relativePath)
+        val remote = dao.indexedEntry(connectionId, normalized) ?: return@withContext null
+        if (remote.isDirectory) return@withContext null
+        val local = findLocalFile(connectionId, normalized) ?: return@withContext null
+        val state = MirrorDiffPolicy.classify(remote.size, remote.lastModified, local.length(), local.lastModified())
+        if (state == MirrorDiffState.SAME) local.uri else null
+    }
+
     suspend fun copyRemoteToLocal(connectionId: String, relativePath: String, progress: suspend (Long, Long) -> Unit = { _, _ -> }): Long = withContext(Dispatchers.IO) {
         val normalized = RemotePath.normalize(relativePath)
         val entry = requireNotNull(dao.indexedEntry(connectionId, normalized)) { "REMOTE_ENTRY_NOT_FOUND" }
@@ -84,6 +94,19 @@ class MirrorRepository @Inject constructor(
         } finally {
             credential.password.fill('\u0000')
         }
+    }
+
+    private suspend fun findLocalFile(connectionId: String, relativePath: String): DocumentFile? {
+        val rootValue = settings.mirrorRootUri.first() ?: return null
+        val root = DocumentFile.fromTreeUri(context, Uri.parse(rootValue)) ?: return null
+        var current = root.findFile(connectionId)?.takeIf { it.isDirectory } ?: return null
+        val parts = relativePath.split('/').filter(String::isNotBlank)
+        parts.forEachIndexed { index, part ->
+            val next = current.findFile(part) ?: return null
+            if (index < parts.lastIndex && !next.isDirectory) return null
+            current = next
+        }
+        return current.takeIf { it.isFile && it.exists() }
     }
 
     private fun collectLocalFiles(root: DocumentFile): Map<String, DocumentFile> {
