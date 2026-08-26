@@ -100,7 +100,21 @@ class MainViewModel @Inject constructor(application: Application, private val re
         }.cachedIn(viewModelScope)
 
     fun browse(connection: ConnectionSummary) { selectedConnection.value = connection; currentPath.value = ""; screen.value = AppScreen.BROWSER }
-    fun openFolder(item: BrowserItem) { if (item.isDirectory) currentPath.value = item.relativePath else enqueueDownload(item) }
+    fun openFolder(item: BrowserItem) {
+        if (item.isDirectory) {
+            currentPath.value = item.relativePath
+            return
+        }
+        val connectionId = selectedConnection.value?.connection?.id ?: return
+        viewModelScope.launch {
+            val cached = runCatching { cacheRepository.cachedUriIfValid(connectionId, item.relativePath) }.getOrNull()
+            if (cached != null) {
+                if (!externalOpen.open(cached, item.name)) message.value = "No app can open this file"
+            } else {
+                enqueueDownload(item)
+            }
+        }
+    }
     fun browserBack(): Boolean = when { FolderNavigation.hasParent(currentPath.value) -> { currentPath.value = FolderNavigation.parent(currentPath.value); true }; screen.value == AppScreen.BROWSER -> { screen.value = AppScreen.CONNECTIONS; true }; else -> false }
     fun showConnections() { screen.value = AppScreen.CONNECTIONS }
     fun showSettings() { screen.value = AppScreen.SETTINGS }
@@ -166,7 +180,7 @@ class MainViewModel @Inject constructor(application: Application, private val re
         val connectionId=selectedConnection.value?.connection?.id?:return
         if(cacheRootUri.value==null){message.value="Set the On-demand Cache folder in Settings";screen.value=AppScreen.SETTINGS;return}
         val request=OneTimeWorkRequestBuilder<DownloadWorker>().setInputData(workDataOf(DownloadWorker.KEY_CONNECTION to connectionId,DownloadWorker.KEY_PATH to item.relativePath)).build()
-        workManager.enqueueUniqueWork("on-demand-download-queue",ExistingWorkPolicy.APPEND,request);download.value=ScanUiState(request.id,WorkInfo.State.ENQUEUED,0,item.name)
+        workManager.enqueueUniqueWork("on-demand-download-queue",ExistingWorkPolicy.APPEND_OR_REPLACE,request);download.value=ScanUiState(request.id,WorkInfo.State.ENQUEUED,0,item.name)
         viewModelScope.launch { workManager.getWorkInfoByIdFlow(request.id).collect { info->if(info==null)return@collect;download.value=ScanUiState(request.id,info.state,info.progress.getLong(DownloadWorker.KEY_COPIED,0),item.name,info.progress.getLong(DownloadWorker.KEY_TOTAL,item.size));if(info.state==WorkInfo.State.SUCCEEDED){val evicted=info.outputData.getLong(DownloadWorker.KEY_EVICTED_BYTES,0);if(evicted>0)message.value="Old cache removed automatically to make space";val uri=info.outputData.getString(DownloadWorker.KEY_URI)?.let(Uri::parse);if(uri!=null&&!externalOpen.open(uri,item.name))message.value="No app can open this file"}else if(info.state==WorkInfo.State.FAILED){message.value=when(info.outputData.getString(DownloadWorker.KEY_ERROR)){"CACHE_ROOT_UNCONFIGURED"->"Set the On-demand Cache folder in Settings";"FILE_EXCEEDS_CACHE_LIMIT"->"This file is larger than the cache limit";"CACHE_LIMIT_CANNOT_BE_SATISFIED"->"Not enough removable cache space";else->"Download failed"}} } }
     }
     fun cancelDownload(){download.value.workId?.let(workManager::cancelWorkById)}
