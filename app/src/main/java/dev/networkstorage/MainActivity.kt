@@ -222,6 +222,11 @@ private fun BrowserRow(item: BrowserItem, onClick: () -> Unit, onRemoveCache: ()
 @Composable
 private fun SettingsScreen(viewModel: MainViewModel) {
     val bytes by viewModel.cacheLimitBytes.collectAsState(); var custom by remember { mutableStateOf("") }; var confirmClearCache by remember { mutableStateOf(false) }; val cacheRoot by viewModel.cacheRootUri.collectAsState(); val mirrorRoot by viewModel.mirrorRootUri.collectAsState(); val usage by viewModel.cacheUsage.collectAsState(); val automaticSyncEnabled by viewModel.automaticMirrorSyncEnabled.collectAsState(); val automaticSyncInterval by viewModel.automaticMirrorSyncIntervalMinutes.collectAsState(); val context = LocalContext.current
+    val statusSettings = remember(context) { SettingsRepository(context.applicationContext) }
+    val lastAutomaticSyncAt by statusSettings.automaticMirrorSyncLastRunAt.collectAsState(initial = 0L)
+    val lastAutomaticSyncStatus by statusSettings.automaticMirrorSyncLastStatus.collectAsState(initial = SettingsRepository.AUTOMATIC_SYNC_STATUS_NEVER)
+    val lastAutomaticSyncFiles by statusSettings.automaticMirrorSyncLastFiles.collectAsState(initial = 0L)
+    val lastAutomaticSyncBytes by statusSettings.automaticMirrorSyncLastBytes.collectAsState(initial = 0L)
     fun persist(uri: android.net.Uri): Boolean = runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }.isSuccess
     val cachePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let { if (persist(it)) viewModel.saveStorageRoot(StorageRootKind.CACHE, it) else viewModel.message.value = "Could not retain folder access" } }; val mirrorPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let { if (persist(it)) viewModel.saveStorageRoot(StorageRootKind.MIRROR, it) else viewModel.message.value = "Could not retain folder access" } }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = ScreenPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -252,6 +257,15 @@ private fun SettingsScreen(viewModel: MainViewModel) {
                         }
                     }
                     Text("Automatic sync refreshes the NAS index first, then copies NAS-only and NAS-newer files to Mirror storage. Local Mirror files are not deleted.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                HorizontalDivider()
+                Text("Last automatic sync", style = MaterialTheme.typography.labelMedium)
+                if (lastAutomaticSyncAt == 0L) {
+                    Text("Never run yet", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    val statusLabel = if (lastAutomaticSyncStatus == SettingsRepository.AUTOMATIC_SYNC_STATUS_SUCCESS) "Success" else "Retrying"
+                    Text("${DateFormat.getDateTimeInstance().format(Date(lastAutomaticSyncAt))} • $statusLabel", style = MaterialTheme.typography.bodySmall)
+                    Text("$lastAutomaticSyncFiles files • ${formatBytes(lastAutomaticSyncBytes)} copied", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
