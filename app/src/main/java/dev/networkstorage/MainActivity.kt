@@ -39,6 +39,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ColumnScope
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -78,52 +79,17 @@ class MainActivity : ComponentActivity() {
 private fun NetworkStorageScreen(viewModel: MainViewModel = hiltViewModel()) {
     val screen by viewModel.screen.collectAsState()
     val message by viewModel.message.collectAsState()
-
     BackHandler(enabled = screen == AppScreen.BROWSER) { viewModel.browserBack() }
     BackHandler(enabled = screen == AppScreen.CONNECTION_EDIT) { viewModel.showConnections() }
-
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
-        bottomBar = {
-            if (screen != AppScreen.CONNECTION_EDIT) {
-                NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-                    NavigationBarItem(
-                        selected = screen == AppScreen.CONNECTIONS,
-                        onClick = viewModel::showConnections,
-                        icon = { Text("▤") },
-                        label = { Text("Connections") },
-                    )
-                    NavigationBarItem(
-                        selected = screen == AppScreen.BROWSER,
-                        onClick = { if (viewModel.selectedConnection.value != null) viewModel.screen.value = AppScreen.BROWSER },
-                        icon = { Text("▱") },
-                        label = { Text("Browser") },
-                    )
-                    NavigationBarItem(
-                        selected = screen == AppScreen.SETTINGS,
-                        onClick = viewModel::showSettings,
-                        icon = { Text("⚙") },
-                        label = { Text("Settings") },
-                    )
-                }
-            }
-        },
-    ) { padding ->
+    Scaffold(bottomBar = {
+        if (screen != AppScreen.CONNECTION_EDIT) NavigationBar {
+            NavigationBarItem(screen == AppScreen.CONNECTIONS, viewModel::showConnections, { Text("Connections") }, icon = { Text("▤") })
+            NavigationBarItem(screen == AppScreen.BROWSER, { if (viewModel.selectedConnection.value != null) viewModel.screen.value = AppScreen.BROWSER }, { Text("Browser") }, icon = { Text("▱") })
+            NavigationBarItem(screen == AppScreen.SETTINGS, viewModel::showSettings, { Text("Settings") }, icon = { Text("⚙") })
+        }
+    }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            message?.let {
-                Surface(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = ScreenPadding, vertical = 6.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                ) {
-                    Text(
-                        it,
-                        Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
+            message?.let { Text(it, Modifier.padding(horizontal = ScreenPadding, vertical = 6.dp), color = MaterialTheme.colorScheme.primary) }
             when (screen) {
                 AppScreen.CONNECTIONS -> ConnectionsScreen(viewModel)
                 AppScreen.CONNECTION_EDIT -> ConnectionEditorScreen(viewModel)
@@ -140,27 +106,20 @@ private fun ConnectionsScreen(viewModel: MainViewModel) {
     val scan by viewModel.scan.collectAsState()
     var deleteConnection by remember { mutableStateOf<ConnectionSummary?>(null) }
     var deleteIndex by remember { mutableStateOf<ConnectionSummary?>(null) }
-
     Column(Modifier.fillMaxSize().padding(horizontal = ScreenPadding)) {
-        Row(
-            Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
+        Spacer(Modifier.height(18.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
                 Text("Network Storage", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
-                Text("Connections and scans", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Connections and scans", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            FloatingActionButton(onClick = viewModel::openAddConnection) { Text("+", style = MaterialTheme.typography.headlineSmall) }
+            FloatingActionButton(viewModel::openAddConnection) { Text("+") }
         }
-
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
+        Spacer(Modifier.height(18.dp))
+        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(connections.size, key = { connections[it].connection.id }) { index ->
                 val summary = connections[index]
                 var menu by remember { mutableStateOf(false) }
-
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth(),
                     shape = SectionShape,
@@ -168,72 +127,44 @@ private fun ConnectionsScreen(viewModel: MainViewModel) {
                 ) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column(Modifier.weight(1f)) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text("▣", color = MaterialTheme.colorScheme.primary)
-                                    Text(summary.connection.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                                    Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.secondaryContainer) {
-                                        Text("SMB", Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
-                                    }
-                                }
+                            Column {
+                                Text(summary.connection.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                                 Text(
                                     "${summary.connection.share}${summary.connection.basePath.takeIf(String::isNotBlank)?.let { " / $it" }.orEmpty()}",
-                                    style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                        }
-
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-                        Text(
-                            "Last scan  ${summary.lastScanAt?.let { DateFormat.getDateTimeInstance().format(Date(it)) } ?: "Never"}",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Text("${summary.entryCount} entries", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-                        if (scan.ownerId == summary.connection.id && scan.state?.isFinished == false) {
-                            LinearProgressIndicator(Modifier.fillMaxWidth())
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Scanning… ${scan.count} entries", style = MaterialTheme.typography.bodySmall)
-                                TextButton(onClick = viewModel::cancelScan) { Text("Cancel") }
+                            Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                                Text("SMB", Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelMedium)
                             }
                         }
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        HorizontalDivider()
+                        Text("Last scan", style = MaterialTheme.typography.labelLarge)
+                        Text(summary.lastScanAt?.let { DateFormat.getDateTimeInstance().format(Date(it)) } ?: "Never")
+                        Text("${summary.entryCount} entries", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (scan.ownerId == summary.connection.id && scan.state?.isFinished == false) {
+                            Text("Scanning… ${scan.count} entries")
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            TextButton(viewModel::cancelScan) { Text("Cancel") }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = { viewModel.browse(summary) }) { Text("▱  Open") }
                             OutlinedButton(onClick = { viewModel.startScan(summary) }, enabled = summary.hasRootRule) { Text("↻  Scan") }
                             TextButton(onClick = { menu = true }) { Text("⋮") }
-                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                                DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; viewModel.openEditConnection(summary) })
-                                DropdownMenuItem(text = { Text("Scan") }, onClick = { menu = false; viewModel.startScan(summary) }, enabled = summary.hasRootRule)
-                                DropdownMenuItem(text = { Text("Delete index") }, onClick = { menu = false; deleteIndex = summary }, enabled = summary.hasRootRule)
-                                DropdownMenuItem(text = { Text("Delete connection") }, onClick = { menu = false; deleteConnection = summary })
+                            DropdownMenu(menu, { menu = false }) {
+                                DropdownMenuItem({ Text("Edit") }, { menu = false; viewModel.openEditConnection(summary) })
+                                DropdownMenuItem({ Text("Scan") }, { menu = false; viewModel.startScan(summary) }, enabled = summary.hasRootRule)
+                                DropdownMenuItem({ Text("Delete index") }, { menu = false; deleteIndex = summary }, enabled = summary.hasRootRule)
+                                DropdownMenuItem({ Text("Delete connection") }, { menu = false; deleteConnection = summary })
                             }
                         }
                     }
                 }
             }
-            item { Spacer(Modifier.height(12.dp)) }
         }
     }
-
-    deleteConnection?.let { target ->
-        ConfirmDelete(
-            "Delete \"${target.connection.name}\"?",
-            "This removes connection settings, indexed metadata, and saved credentials. Files on the NAS will NOT be deleted.",
-            { deleteConnection = null },
-            { viewModel.deleteConnection(target); deleteConnection = null },
-        )
-    }
-    deleteIndex?.let { target ->
-        ConfirmDelete(
-            "Delete index target?",
-            "This removes the local root rule and indexed metadata only. Nothing on the NAS will be changed.",
-            { deleteIndex = null },
-            { viewModel.deleteRootIndex(target); deleteIndex = null },
-        )
-    }
+    deleteConnection?.let { target -> ConfirmDelete("Delete \"${target.connection.name}\"?", "This removes connection settings, indexed metadata, and saved credentials. Files on the NAS will NOT be deleted.", { deleteConnection = null }, { viewModel.deleteConnection(target); deleteConnection = null }) }
+    deleteIndex?.let { target -> ConfirmDelete("Delete index target?", "This removes the local root rule and indexed metadata only. Nothing on the NAS will be changed.", { deleteIndex = null }, { viewModel.deleteRootIndex(target); deleteIndex = null }) }
 }
 
 @Composable
@@ -242,82 +173,46 @@ private fun BrowserScreen(viewModel: MainViewModel) {
     val path by viewModel.currentPath.collectAsState()
     val items = viewModel.browserItems.collectAsLazyPagingItems()
     val download by viewModel.download.collectAsState()
-
     Column(Modifier.fillMaxSize().padding(horizontal = ScreenPadding)) {
-        val root = connection?.connection?.let { listOf(it.share, it.basePath).filter(String::isNotBlank).joinToString(" / ") }.orEmpty()
-        val title = path.substringAfterLast('/', root.substringAfterLast('/', connection?.connection?.name ?: "Select a connection"))
-        val breadcrumb = listOfNotNull(connection?.connection?.name, root.takeIf(String::isNotEmpty), path.takeIf(String::isNotEmpty)).joinToString(" / ")
-
-        Spacer(Modifier.height(18.dp))
-        Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
-        Text(breadcrumb, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(14.dp))
-
-        if (path.isNotEmpty()) {
-            Surface(
-                Modifier.fillMaxWidth().clickable { viewModel.browserBack() },
-                shape = RowShape,
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-            ) {
-                Text("↑  One level up", Modifier.padding(horizontal = 14.dp, vertical = 13.dp), fontWeight = FontWeight.Medium)
-            }
-            Spacer(Modifier.height(10.dp))
+        val root = connection?.connection?.let { listOf(it.share, it.basePath).filter(String::isNotBlank).joinToString(" / ") }.orEmpty()
+        Text(path.substringAfterLast('/', root.substringAfterLast('/', connection?.connection?.name ?: "Select a connection")), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Text(listOfNotNull(connection?.connection?.name, root.takeIf(String::isNotEmpty), path.takeIf(String::isNotEmpty)).joinToString(" / "), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(12.dp))
+        if (path.isNotEmpty()) Surface(shape = RowShape, color = MaterialTheme.colorScheme.surfaceContainer) {
+            Text("←  One level up", Modifier.fillMaxWidth().clickable { viewModel.browserBack() }.padding(14.dp), fontWeight = FontWeight.Medium)
         }
-
         download.state?.takeIf { !it.isFinished }?.let {
-            ElevatedCard(Modifier.fillMaxWidth(), shape = RowShape) {
+            Spacer(Modifier.height(10.dp))
+            Surface(shape = RowShape, color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Downloading ${download.path}", fontWeight = FontWeight.Medium)
-                    LinearProgressIndicator(
-                        progress = { downloadPercent(download.count, download.total) / 100f },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Text("${formatBytes(download.count)} / ${formatBytes(download.total)}", style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = viewModel::cancelDownload) { Text("Cancel download") }
+                    Text("Downloading ${download.path}")
+                    LinearProgressIndicator(progress = { usageRatio(download.count, download.total) }, modifier = Modifier.fillMaxWidth())
+                    Text("${formatBytes(download.count)} / ${formatBytes(download.total)} (${downloadPercent(download.count, download.total)}%)", style = MaterialTheme.typography.bodySmall)
+                    TextButton(viewModel::cancelDownload) { Text("Cancel") }
                 }
             }
-            Spacer(Modifier.height(10.dp))
         }
-
+        Spacer(Modifier.height(10.dp))
         LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(items.itemCount) { index ->
-                items[index]?.let { BrowserRow(it) { viewModel.openFolder(it) } }
-            }
-            item { Spacer(Modifier.height(10.dp)) }
+            items(items.itemCount) { index -> items[index]?.let { BrowserRow(it) { viewModel.openFolder(it) } } }
         }
     }
 }
 
 @Composable
 private fun BrowserRow(item: BrowserItem, onClick: () -> Unit) {
-    val missingColor = if (item.remoteExists) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error
-
-    Surface(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RowShape,
-        color = if (item.isDirectory) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
-        tonalElevation = if (item.isDirectory) 0.dp else 1.dp,
-    ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
-            Text(
-                if (item.isDirectory) "📁" else BrowserPresentation.stateIcon(item.localState),
-                style = MaterialTheme.typography.titleLarge,
-            )
+    val missingColor = if (item.remoteExists) Color.Unspecified else MaterialTheme.colorScheme.error
+    Surface(shape = RowShape, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 12.dp)) {
+            val icon = if (item.isDirectory) "📁" else BrowserPresentation.stateIcon(item.localState)
+            Text(icon, style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    item.name,
-                    color = missingColor,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (!item.isDirectory) {
-                    Text(formatBytes(item.size), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                }
+                Text(item.name, color = missingColor, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (!item.isDirectory) Text(formatBytes(item.size), color = if (item.remoteExists) MaterialTheme.colorScheme.onSurfaceVariant else missingColor, style = MaterialTheme.typography.bodySmall)
             }
-            if (item.isDirectory) Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleLarge)
+            if (item.isDirectory) Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -396,10 +291,7 @@ private fun SettingsScreen(viewModel: MainViewModel) {
                 }
 
                 Text("Usage  ${formatBytes(usage)} / ${formatBytes(bytes)}", style = MaterialTheme.typography.bodyMedium)
-                LinearProgressIndicator(
-                    progress = { usageRatio(usage, bytes) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                LinearProgressIndicator(progress = { usageRatio(usage, bytes) }, modifier = Modifier.fillMaxWidth())
             }
         }
 
@@ -424,7 +316,7 @@ private fun SettingsScreen(viewModel: MainViewModel) {
 }
 
 @Composable
-private fun SettingsSectionCard(title: String, content: @Composable Column.() -> Unit) {
+private fun SettingsSectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = SectionShape,
@@ -452,121 +344,54 @@ private fun StoragePathBox(uri: String?) {
 }
 
 @Composable
+private fun ConnectionEditorScreen(viewModel: MainViewModel) {
+    val editor by viewModel.editor.collectAsState()
+    var password by remember(editor.id) { mutableStateOf("") }
+    Column(Modifier.fillMaxSize().padding(ScreenPadding), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth()) { TextButton(viewModel::showConnections) { Text("←") }; Text(if (editor.id == null) "Add connection" else "Edit connection", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold) }
+        OutlinedTextField(editor.name, { viewModel.updateEditor(editor.copy(name = it)) }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(editor.host, { viewModel.updateEditor(editor.copy(host = it)) }, label = { Text("Host") }, modifier = Modifier.weight(3f), singleLine = true)
+            OutlinedTextField(editor.port, { viewModel.updateEditor(editor.copy(port = it)) }, label = { Text("Port") }, modifier = Modifier.weight(1f), singleLine = true)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(editor.username, { viewModel.updateEditor(editor.copy(username = it)) }, label = { Text("Username") }, modifier = Modifier.weight(1f), singleLine = true)
+            OutlinedTextField(password, { password = it }, label = { Text(if (editor.id == null) "Password" else "Password (saved)") }, placeholder = { if (editor.id != null) Text("Leave blank to keep") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.weight(1f), singleLine = true)
+        }
+        OutlinedTextField(editor.domain, { viewModel.updateEditor(editor.copy(domain = it)) }, label = { Text("Domain (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        OutlinedTextField(editor.share, { viewModel.updateEditor(editor.copy(share = it, basePath = "")) }, label = { Text("Share") }, placeholder = { Text("e.g. documents") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        Row { OutlinedTextField(editor.networkFolder, {}, readOnly = true, label = { Text("Network folder") }, modifier = Modifier.weight(1f)); Spacer(Modifier.width(8.dp)); Button({ viewModel.openNetworkFolderPicker(password) }, enabled = editor.share.isNotBlank()) { Text("📁") } }
+        Text("Enter the SMB share name, then use the folder button to choose any folder inside that share.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Mode", fontWeight = FontWeight.Medium)
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { FolderMode.entries.forEach { candidate -> Button({ viewModel.updateEditor(editor.copy(mode = candidate)) }, enabled = editor.mode != candidate) { Text(candidate.name.replace('_', ' ').lowercase()) } } }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(viewModel::showConnections) { Text("Cancel") }; Button({ viewModel.saveEditor(password); password = "" }, enabled = editor.share.isNotBlank()) { Text("Save") } }
+    }
+    val picker by viewModel.remotePicker.collectAsState()
+    if (picker.visible) AlertDialog(onDismissRequest = viewModel::closeRemotePicker, title = { Text("Network folder") }, text = { Column {
+        Text("${editor.host} / ${picker.share}${picker.path.takeIf(String::isNotBlank)?.let { " / $it" }.orEmpty()}")
+        if (picker.loading) Text("Loading…")
+        picker.error?.let { Text("Could not browse: $it", color = MaterialTheme.colorScheme.error) }
+        if (picker.path.isNotEmpty()) Text("↑ One level up", Modifier.fillMaxWidth().clickable { viewModel.browsePickerFolder(password, FolderNavigation.parent(picker.path)) }.padding(10.dp))
+        picker.folders.forEach { folder -> Text("📁 ${folder.substringAfterLast('/')}", Modifier.fillMaxWidth().clickable { viewModel.browsePickerFolder(password, folder) }.padding(10.dp)) }
+    } }, dismissButton = { TextButton(viewModel::closeRemotePicker) { Text("Cancel") } }, confirmButton = { TextButton(viewModel::usePickerFolder) { Text("Use this folder") } })
+}
+
+@Composable
 private fun ConfirmDelete(title: String, body: String, dismiss: () -> Unit, confirm: () -> Unit) = AlertDialog(
     onDismissRequest = dismiss,
     title = { Text(title) },
     text = { Text(body) },
-    dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
-    confirmButton = { TextButton(onClick = confirm) { Text("Delete") } },
+    dismissButton = { TextButton(dismiss) { Text("Cancel") } },
+    confirmButton = { TextButton(confirm) { Text("Delete") } },
 )
 
-@Composable
-private fun ConnectionEditorScreen(viewModel: MainViewModel) {
-    val editor by viewModel.editor.collectAsState()
-    var password by remember(editor.id) { mutableStateOf("") }
-
-    LazyColumn(
-        Modifier.fillMaxSize().padding(horizontal = ScreenPadding),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth()) {
-                TextButton(onClick = viewModel::showConnections) { Text("←") }
-                Column {
-                    Text(if (editor.id == null) "Add connection" else "Edit connection", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                    Text("SMB connection settings", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-
-        item {
-            ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(editor.name, { viewModel.updateEditor(editor.copy(name = it)) }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(editor.host, { viewModel.updateEditor(editor.copy(host = it)) }, label = { Text("Host") }, modifier = Modifier.weight(3f), singleLine = true)
-                        OutlinedTextField(editor.port, { viewModel.updateEditor(editor.copy(port = it)) }, label = { Text("Port") }, modifier = Modifier.weight(1f), singleLine = true)
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(editor.username, { viewModel.updateEditor(editor.copy(username = it)) }, label = { Text("Username") }, modifier = Modifier.weight(1f), singleLine = true)
-                        OutlinedTextField(
-                            password,
-                            { password = it },
-                            label = { Text(if (editor.id == null) "Password" else "Password") },
-                            placeholder = { if (editor.id != null) Text("Keep saved") },
-                            visualTransformation = PasswordVisualTransformation(),
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                        )
-                    }
-                    OutlinedTextField(editor.domain, { viewModel.updateEditor(editor.copy(domain = it)) }, label = { Text("Domain (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    OutlinedTextField(editor.share, { viewModel.updateEditor(editor.copy(share = it, basePath = "")) }, label = { Text("Share") }, placeholder = { Text("e.g. documents") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(editor.networkFolder, {}, readOnly = true, label = { Text("Network folder") }, modifier = Modifier.weight(1f), singleLine = true)
-                        Button(onClick = { viewModel.openNetworkFolderPicker(password) }, enabled = editor.share.isNotBlank()) { Text("▱") }
-                    }
-                    Text("Enter the SMB share, then choose a folder inside it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-
-        item {
-            ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Mode", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FolderMode.entries.forEach { candidate ->
-                            if (editor.mode == candidate) {
-                                FilledTonalButton(onClick = { viewModel.updateEditor(editor.copy(mode = candidate)) }) { Text(candidate.name.replace('_', ' ').lowercase()) }
-                            } else {
-                                OutlinedButton(onClick = { viewModel.updateEditor(editor.copy(mode = candidate)) }) { Text(candidate.name.replace('_', ' ').lowercase()) }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = viewModel::showConnections) { Text("Cancel") }
-                Spacer(Modifier.width(8.dp))
-                Button(onClick = { viewModel.saveEditor(password); password = "" }, enabled = editor.share.isNotBlank()) { Text("Save") }
-            }
-            Spacer(Modifier.height(16.dp))
-        }
-    }
-
-    val picker by viewModel.remotePicker.collectAsState()
-    if (picker.visible) {
-        AlertDialog(
-            onDismissRequest = viewModel::closeRemotePicker,
-            title = { Text("Network folder") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("${editor.host} / ${picker.share}${picker.path.takeIf(String::isNotBlank)?.let { " / $it" }.orEmpty()}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (picker.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    picker.error?.let { Text("Could not browse: $it", color = MaterialTheme.colorScheme.error) }
-                    if (picker.path.isNotEmpty()) {
-                        Text("↑  One level up", Modifier.fillMaxWidth().clickable { viewModel.browsePickerFolder(password, FolderNavigation.parent(picker.path)) }.padding(10.dp))
-                    }
-                    picker.folders.forEach { folder ->
-                        Surface(
-                            Modifier.fillMaxWidth().clickable { viewModel.browsePickerFolder(password, folder) },
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainer,
-                        ) {
-                            Text("📁  ${folder.substringAfterLast('/')}", Modifier.padding(12.dp))
-                        }
-                    }
-                }
-            },
-            dismissButton = { TextButton(onClick = viewModel::closeRemotePicker) { Text("Cancel") } },
-            confirmButton = { TextButton(onClick = viewModel::usePickerFolder) { Text("Use this folder") } },
-        )
-    }
+private fun friendlyStorageRoot(uri: String?): String {
+    if (uri == null) return "Not set"
+    val decoded = runCatching { android.net.Uri.decode(uri) }.getOrDefault(uri)
+    return decoded.substringAfter("primary:", decoded)
 }
+
+private fun usageRatio(value: Long, total: Long): Float = if (total <= 0L) 0f else (value.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
 
 private fun formatBytes(bytes: Long): String = when {
     bytes >= SettingsRepository.BYTES_PER_GIB -> "${bytes / SettingsRepository.BYTES_PER_GIB} GB"
@@ -575,14 +400,4 @@ private fun formatBytes(bytes: Long): String = when {
     else -> "$bytes B"
 }
 
-private fun downloadPercent(copied: Long, total: Long): Int =
-    if (total <= 0L) 100 else ((copied.toDouble() / total.toDouble()) * 100.0).toInt().coerceIn(0, 100)
-
-private fun usageRatio(usage: Long, limit: Long): Float =
-    if (limit <= 0L) 0f else (usage.toDouble() / limit.toDouble()).coerceIn(0.0, 1.0).toFloat()
-
-private fun friendlyStorageRoot(uri: String?): String {
-    if (uri.isNullOrBlank()) return "Not set"
-    val decoded = android.net.Uri.decode(uri.substringAfter("/tree/", uri))
-    return decoded.replace("primary:", "Internal storage / ").replace(':', '/').ifBlank { uri }
-}
+private fun downloadPercent(copied: Long, total: Long) = if (total <= 0) 100 else ((copied.toDouble() / total.toDouble()) * 100.0).toInt().coerceIn(0, 100)
