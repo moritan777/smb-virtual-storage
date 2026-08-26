@@ -17,6 +17,7 @@ interface AppDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun saveRootRule(value: FolderRuleEntity)
     @Query("SELECT * FROM connections ORDER BY name") fun observeConnections(): Flow<List<ConnectionEntity>>
     @Query("SELECT * FROM connections WHERE id = :id") suspend fun connection(id: String): ConnectionEntity?
+    @Query("SELECT * FROM connections WHERE rootMode='MIRROR' ORDER BY name COLLATE NOCASE") suspend fun mirrorConnections(): List<ConnectionEntity>
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertEntry(value: IndexedEntryEntity)
     @Query("SELECT indexed_entries.*, cache_entries.localDocumentUri AS cacheDocumentUri, cache_entries.size AS cacheSize, cache_entries.remoteSize AS cacheRemoteSize, cache_entries.remoteLastModified AS cacheRemoteLastModified, cache_entries.state AS cacheState FROM indexed_entries LEFT JOIN cache_entries ON cache_entries.connectionId=indexed_entries.connectionId AND cache_entries.relativePath=indexed_entries.relativePath WHERE indexed_entries.connectionId=:connectionId AND indexed_entries.parentPath=:parentPath ORDER BY indexed_entries.isDirectory DESC, indexed_entries.name COLLATE NOCASE ASC") fun children(connectionId: String, parentPath: String): PagingSource<Int, BrowserEntryRow>
     @Query("SELECT * FROM indexed_entries WHERE connectionId=:connectionId AND isDirectory=0 ORDER BY relativePath COLLATE NOCASE") suspend fun indexedFiles(connectionId: String): List<IndexedEntryEntity>
