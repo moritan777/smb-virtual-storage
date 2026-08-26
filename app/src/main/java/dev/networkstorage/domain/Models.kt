@@ -1,6 +1,11 @@
 package dev.networkstorage.domain
 
-enum class FolderMode { INDEX_ONLY, ON_DEMAND, MIRROR }
+enum class FolderMode {
+    @Deprecated("Legacy database value only; migrated to ON_DEMAND in database version 3")
+    INDEX_ONLY,
+    ON_DEMAND,
+    MIRROR,
+}
 
 enum class ScanStatus { RUNNING, SUCCEEDED, FAILED, CANCELLED }
 
