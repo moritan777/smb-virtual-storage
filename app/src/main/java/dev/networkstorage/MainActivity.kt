@@ -56,6 +56,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.compose.collectAsLazyPagingItems
 import dagger.hilt.android.AndroidEntryPoint
 import dev.networkstorage.data.db.ConnectionSummary
+import dev.networkstorage.data.mirror.MirrorDiffItem
+import dev.networkstorage.data.mirror.MirrorDiffState
+import dev.networkstorage.data.mirror.MirrorSyncPolicy
 import dev.networkstorage.data.settings.SettingsRepository
 import dev.networkstorage.data.settings.StorageRootKind
 import dev.networkstorage.domain.FolderMode
@@ -80,6 +83,7 @@ private fun NetworkStorageScreen(viewModel: MainViewModel = hiltViewModel()) {
     val screen by viewModel.screen.collectAsState()
     val message by viewModel.message.collectAsState()
     BackHandler(enabled = screen == AppScreen.BROWSER) { viewModel.browserBack() }
+    BackHandler(enabled = screen == AppScreen.MIRROR) { viewModel.showConnections() }
     BackHandler(enabled = screen == AppScreen.CONNECTION_EDIT) { viewModel.showConnections() }
 
     Scaffold(
@@ -99,6 +103,7 @@ private fun NetworkStorageScreen(viewModel: MainViewModel = hiltViewModel()) {
                 AppScreen.CONNECTIONS -> ConnectionsScreen(viewModel)
                 AppScreen.CONNECTION_EDIT -> ConnectionEditorScreen(viewModel)
                 AppScreen.BROWSER -> BrowserScreen(viewModel)
+                AppScreen.MIRROR -> MirrorScreen(viewModel)
                 AppScreen.SETTINGS -> SettingsScreen(viewModel)
             }
         }
@@ -150,10 +155,12 @@ private fun ConnectionsScreen(viewModel: MainViewModel) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = { viewModel.browse(summary) }) { Text("▱  Open") }
                             OutlinedButton(onClick = { viewModel.startScan(summary) }, enabled = summary.hasRootRule) { Text("↻  Scan") }
+                            OutlinedButton(onClick = { viewModel.openMirror(summary) }, enabled = summary.hasRootRule) { Text("⇄  Mirror") }
                             TextButton(onClick = { menu = true }) { Text("⋮") }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; viewModel.openEditConnection(summary) })
                                 DropdownMenuItem(text = { Text("Scan") }, onClick = { menu = false; viewModel.startScan(summary) }, enabled = summary.hasRootRule)
+                                DropdownMenuItem(text = { Text("Mirror compare") }, onClick = { menu = false; viewModel.openMirror(summary) }, enabled = summary.hasRootRule)
                                 DropdownMenuItem(text = { Text("Delete index") }, onClick = { menu = false; deleteIndex = summary }, enabled = summary.hasRootRule)
                                 DropdownMenuItem(text = { Text("Delete connection") }, onClick = { menu = false; deleteConnection = summary })
                             }
@@ -166,6 +173,94 @@ private fun ConnectionsScreen(viewModel: MainViewModel) {
 
     deleteConnection?.let { target -> ConfirmDelete("Delete \"${target.connection.name}\"?", "This removes connection settings, indexed metadata, and saved credentials. Files on the NAS will NOT be deleted.", { deleteConnection = null }, { viewModel.deleteConnection(target); deleteConnection = null }) }
     deleteIndex?.let { target -> ConfirmDelete("Delete index target?", "This removes the local root rule and indexed metadata only. Nothing on the NAS will be changed.", { deleteIndex = null }, { viewModel.deleteRootIndex(target); deleteIndex = null }) }
+}
+
+@Composable
+private fun MirrorScreen(viewModel: MainViewModel) {
+    val connection by viewModel.selectedConnection.collectAsState()
+    val mirror by viewModel.mirror.collectAsState()
+    val root by viewModel.mirrorRootUri.collectAsState()
+    val syncable = mirror.items.count { MirrorSyncPolicy.canCopyRemoteToLocal(it.state) }
+
+    Column(Modifier.fillMaxSize().padding(horizontal = ScreenPadding)) {
+        Spacer(Modifier.height(14.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column(Modifier.weight(1f)) {
+                Text("Mirror", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                Text(connection?.connection?.name ?: "No connection", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            TextButton(onClick = viewModel::showConnections) { Text("Close") }
+        }
+        Spacer(Modifier.height(10.dp))
+        Surface(shape = RowShape, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Mirror destination", style = MaterialTheme.typography.labelLarge)
+                Text(friendlyStorageRoot(root), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = viewModel::compareMirror, enabled = !mirror.loading && mirror.state?.isFinished != false) { Text("↻  Compare") }
+                    Button(onClick = viewModel::syncAllMirror, enabled = syncable > 0 && mirror.state?.isFinished != false) { Text("↓  Sync all ($syncable)") }
+                }
+            }
+        }
+
+        if (mirror.loading) {
+            Spacer(Modifier.height(10.dp))
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            Text("Comparing NAS index and Mirror folder…", style = MaterialTheme.typography.bodySmall)
+        }
+
+        mirror.state?.takeIf { !it.isFinished }?.let {
+            Spacer(Modifier.height(10.dp))
+            Surface(shape = RowShape, color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Syncing ${mirror.currentPath.substringAfterLast('/')}")
+                    LinearProgressIndicator(progress = { usageRatio(mirror.copied, mirror.currentTotal) }, modifier = Modifier.fillMaxWidth())
+                    Text("${mirror.completedFiles} / ${mirror.totalFiles} files   ${formatBytes(mirror.copied)} / ${formatBytes(mirror.currentTotal)}", style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = viewModel::cancelMirrorSync) { Text("Cancel") }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+        if (!mirror.loading && mirror.items.isEmpty()) {
+            Text("No differences found. Tap Compare after scanning the NAS.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(mirror.items, key = { it.relativePath }) { item -> MirrorRow(item, mirror.state?.isFinished != false) { viewModel.syncMirror(item) } }
+        }
+    }
+}
+
+@Composable
+private fun MirrorRow(item: MirrorDiffItem, idle: Boolean, onSync: () -> Unit) {
+    val label = when (item.state) {
+        MirrorDiffState.REMOTE_ONLY -> "NAS only"
+        MirrorDiffState.LOCAL_ONLY -> "Mirror only"
+        MirrorDiffState.SAME -> "Same"
+        MirrorDiffState.REMOTE_NEWER -> "NAS newer"
+        MirrorDiffState.LOCAL_NEWER -> "Mirror newer"
+    }
+    val icon = when (item.state) {
+        MirrorDiffState.REMOTE_ONLY -> "☁"
+        MirrorDiffState.LOCAL_ONLY -> "▣"
+        MirrorDiffState.SAME -> "✓"
+        MirrorDiffState.REMOTE_NEWER -> "↓"
+        MirrorDiffState.LOCAL_NEWER -> "↑"
+    }
+    Surface(shape = RowShape, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Text(icon, style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(item.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(item.relativePath.substringBeforeLast('/', "Root"), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("$label  •  NAS ${item.remoteSize?.let(::formatBytes) ?: "—"}  •  Mirror ${item.localSize?.let(::formatBytes) ?: "—"}", style = MaterialTheme.typography.bodySmall)
+            }
+            if (MirrorSyncPolicy.canCopyRemoteToLocal(item.state)) {
+                TextButton(onClick = onSync, enabled = idle) { Text("Sync") }
+            }
+        }
+    }
 }
 
 @Composable
@@ -222,19 +317,12 @@ private fun BrowserRow(item: BrowserItem, onClick: () -> Unit, onRemoveCache: ()
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(item.name, color = missingColor, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                if (!item.isDirectory) {
-                    Text(formatBytes(item.size), color = if (item.remoteExists) MaterialTheme.colorScheme.onSurfaceVariant else missingColor, style = MaterialTheme.typography.bodySmall)
-                }
+                if (!item.isDirectory) Text(formatBytes(item.size), color = if (item.remoteExists) MaterialTheme.colorScheme.onSurfaceVariant else missingColor, style = MaterialTheme.typography.bodySmall)
             }
-            if (item.isDirectory) {
-                Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else if (hasCache) {
-                Column {
-                    TextButton(onClick = { menu = true }) { Text("⋮") }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(text = { Text("Remove cached copy") }, onClick = { menu = false; onRemoveCache() })
-                    }
-                }
+            if (item.isDirectory) Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else if (hasCache) Column {
+                TextButton(onClick = { menu = true }) { Text("⋮") }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) { DropdownMenuItem(text = { Text("Remove cached copy") }, onClick = { menu = false; onRemoveCache() }) }
             }
         }
     }
@@ -250,40 +338,22 @@ private fun SettingsScreen(viewModel: MainViewModel) {
     val usage by viewModel.cacheUsage.collectAsState()
     val context = LocalContext.current
 
-    fun persist(uri: android.net.Uri): Boolean = runCatching {
-        context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-    }.isSuccess
-
+    fun persist(uri: android.net.Uri): Boolean = runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }.isSuccess
     val cachePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let { if (persist(it)) viewModel.saveStorageRoot(StorageRootKind.CACHE, it) else viewModel.message.value = "Could not retain folder access" } }
     val mirrorPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let { if (persist(it)) viewModel.saveStorageRoot(StorageRootKind.MIRROR, it) else viewModel.message.value = "Could not retain folder access" } }
 
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = ScreenPadding), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item {
-            Spacer(Modifier.height(18.dp))
-            Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
-            Text("Cache and mirror storage", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        item { Spacer(Modifier.height(18.dp)); Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold); Text("Cache and mirror storage", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item {
             SettingsSectionCard(title = "☁  On-demand cache") {
-                Text("Storage folder", style = MaterialTheme.typography.labelLarge)
-                StoragePathBox(cacheRoot)
+                Text("Storage folder", style = MaterialTheme.typography.labelLarge); StoragePathBox(cacheRoot)
                 OutlinedButton(onClick = { cachePicker.launch(null) }, modifier = Modifier.fillMaxWidth()) { Text("▱  Choose folder") }
                 Spacer(Modifier.height(4.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Cache limit", fontWeight = FontWeight.Medium)
-                    Text("${bytes / SettingsRepository.BYTES_PER_GIB} GB", color = MaterialTheme.colorScheme.primary)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SettingsRepository.PRESET_GIB.forEach { gib ->
-                        if (bytes == gib * SettingsRepository.BYTES_PER_GIB) FilledTonalButton(onClick = { viewModel.setCacheLimitGib(gib.toString()) }) { Text("$gib GB") }
-                        else OutlinedButton(onClick = { viewModel.setCacheLimitGib(gib.toString()) }) { Text("$gib GB") }
-                    }
-                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Cache limit", fontWeight = FontWeight.Medium); Text("${bytes / SettingsRepository.BYTES_PER_GIB} GB", color = MaterialTheme.colorScheme.primary) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { SettingsRepository.PRESET_GIB.forEach { gib -> if (bytes == gib * SettingsRepository.BYTES_PER_GIB) FilledTonalButton(onClick = { viewModel.setCacheLimitGib(gib.toString()) }) { Text("$gib GB") } else OutlinedButton(onClick = { viewModel.setCacheLimitGib(gib.toString()) }) { Text("$gib GB") } } }
                 OutlinedTextField(value = custom, onValueChange = { custom = it }, label = { Text("Custom limit") }, suffix = { Text("GB") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 Button(onClick = { viewModel.setCacheLimitGib(custom) }, modifier = Modifier.fillMaxWidth()) { Text("Save custom limit") }
-                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)) {
-                    Text("When a download would exceed this limit, the oldest On-demand cached files are removed automatically. Mirror files are never included.", Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
-                }
+                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)) { Text("When a download would exceed this limit, the oldest On-demand cached files are removed automatically. Mirror files are never included.", Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall) }
                 Text("Usage  ${formatBytes(usage)} / ${formatBytes(bytes)}", style = MaterialTheme.typography.bodyMedium)
                 LinearProgressIndicator(progress = { usageRatio(usage, bytes) }, modifier = Modifier.fillMaxWidth())
                 OutlinedButton(onClick = { confirmClearCache = true }, enabled = usage > 0L, modifier = Modifier.fillMaxWidth()) { Text("Clear all On-demand cache") }
@@ -291,45 +361,20 @@ private fun SettingsScreen(viewModel: MainViewModel) {
         }
         item {
             SettingsSectionCard(title = "▣  Mirror") {
-                Text("Storage folder", style = MaterialTheme.typography.labelLarge)
-                StoragePathBox(mirrorRoot)
+                Text("Storage folder", style = MaterialTheme.typography.labelLarge); StoragePathBox(mirrorRoot)
                 OutlinedButton(onClick = { mirrorPicker.launch(null) }, modifier = Modifier.fillMaxWidth()) { Text("▱  Choose folder") }
-                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-                    Text("The system picker can create folders. Changing the destination does not move existing files. Mirror content is never removed by cache cleanup.", Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer) { Text("The system picker can create folders. Changing the destination does not move existing files. Mirror content is never removed by cache cleanup.", Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
         item { Spacer(Modifier.height(14.dp)) }
     }
-
-    if (confirmClearCache) {
-        AlertDialog(
-            onDismissRequest = { confirmClearCache = false },
-            title = { Text("Clear On-demand cache?") },
-            text = { Text("Downloaded cache copies will be removed from the Cache folder. NAS files and Mirror files will not be changed.") },
-            dismissButton = { TextButton(onClick = { confirmClearCache = false }) { Text("Cancel") } },
-            confirmButton = { TextButton(onClick = { confirmClearCache = false; viewModel.clearCache() }) { Text("Clear cache") } },
-        )
-    }
+    if (confirmClearCache) AlertDialog(onDismissRequest = { confirmClearCache = false }, title = { Text("Clear On-demand cache?") }, text = { Text("Downloaded cache copies will be removed from the Cache folder. NAS files and Mirror files will not be changed.") }, dismissButton = { TextButton(onClick = { confirmClearCache = false }) { Text("Cancel") } }, confirmButton = { TextButton(onClick = { confirmClearCache = false; viewModel.clearCache() }) { Text("Clear cache") } })
 }
 
 @Composable
-private fun SettingsSectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = SectionShape, colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            content()
-        }
-    }
-}
-
+private fun SettingsSectionCard(title: String, content: @Composable ColumnScope.() -> Unit) { ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = SectionShape, colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) { Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold); content() } } }
 @Composable
-private fun StoragePathBox(uri: String?) {
-    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-        Text(friendlyStorageRoot(uri), Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-    }
-}
-
+private fun StoragePathBox(uri: String?) { Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer) { Text(friendlyStorageRoot(uri), Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis) } }
 @Composable
 private fun ConfirmDelete(title: String, body: String, dismiss: () -> Unit, confirm: () -> Unit) = AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = { Text(body) }, dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } }, confirmButton = { TextButton(onClick = confirm) { Text("Delete") } })
 
@@ -337,84 +382,23 @@ private fun ConfirmDelete(title: String, body: String, dismiss: () -> Unit, conf
 private fun ConnectionEditorScreen(viewModel: MainViewModel) {
     val editor by viewModel.editor.collectAsState()
     var password by remember(editor.id) { mutableStateOf("") }
-
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = ScreenPadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item {
-            Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = viewModel::showConnections) { Text("←") }
-                Column {
-                    Text(if (editor.id == null) "Add connection" else "Edit connection", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                    Text("SMB connection settings", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
+        item { Spacer(Modifier.height(12.dp)); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { TextButton(onClick = viewModel::showConnections) { Text("←") }; Column { Text(if (editor.id == null) "Add connection" else "Edit connection", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold); Text("SMB connection settings", color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
         item { OutlinedTextField(editor.name, { viewModel.updateEditor(editor.copy(name = it)) }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(editor.host, { viewModel.updateEditor(editor.copy(host = it)) }, label = { Text("Host") }, modifier = Modifier.weight(3f), singleLine = true)
-                OutlinedTextField(editor.port, { viewModel.updateEditor(editor.copy(port = it)) }, label = { Text("Port") }, modifier = Modifier.weight(1f), singleLine = true)
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(editor.username, { viewModel.updateEditor(editor.copy(username = it)) }, label = { Text("Username") }, modifier = Modifier.weight(1f), singleLine = true)
-                OutlinedTextField(password, { password = it }, label = { Text(if (editor.id == null) "Password" else "Password (saved)") }, placeholder = { if (editor.id != null) Text("Leave blank to keep") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.weight(1f), singleLine = true)
-            }
-        }
+        item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedTextField(editor.host, { viewModel.updateEditor(editor.copy(host = it)) }, label = { Text("Host") }, modifier = Modifier.weight(3f), singleLine = true); OutlinedTextField(editor.port, { viewModel.updateEditor(editor.copy(port = it)) }, label = { Text("Port") }, modifier = Modifier.weight(1f), singleLine = true) } }
+        item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedTextField(editor.username, { viewModel.updateEditor(editor.copy(username = it)) }, label = { Text("Username") }, modifier = Modifier.weight(1f), singleLine = true); OutlinedTextField(password, { password = it }, label = { Text(if (editor.id == null) "Password" else "Password (saved)") }, placeholder = { if (editor.id != null) Text("Leave blank to keep") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.weight(1f), singleLine = true) } }
         item { OutlinedTextField(editor.domain, { viewModel.updateEditor(editor.copy(domain = it)) }, label = { Text("Domain (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
         item { OutlinedTextField(editor.share, { viewModel.updateEditor(editor.copy(share = it, basePath = "")) }, label = { Text("Share") }, placeholder = { Text("e.g. documents") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(editor.networkFolder, {}, readOnly = true, label = { Text("Network folder") }, modifier = Modifier.weight(1f))
-                Button(onClick = { viewModel.openNetworkFolderPicker(password) }, enabled = editor.share.isNotBlank()) { Text("📁") }
-            }
-        }
+        item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedTextField(editor.networkFolder, {}, readOnly = true, label = { Text("Network folder") }, modifier = Modifier.weight(1f)); Button(onClick = { viewModel.openNetworkFolderPicker(password) }, enabled = editor.share.isNotBlank()) { Text("📁") } } }
         item { Text("Enter the SMB share name, then choose any folder inside that share.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        item {
-            Text("Mode", style = MaterialTheme.typography.labelLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FolderMode.entries.forEach { candidate ->
-                    if (editor.mode == candidate) FilledTonalButton(onClick = { }) { Text(candidate.name.replace('_', ' ').lowercase()) }
-                    else OutlinedButton(onClick = { viewModel.updateEditor(editor.copy(mode = candidate)) }) { Text(candidate.name.replace('_', ' ').lowercase()) }
-                }
-            }
-        }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = viewModel::showConnections) { Text("Cancel") }
-                Button(onClick = { viewModel.saveEditor(password); password = "" }, enabled = editor.share.isNotBlank()) { Text("Save") }
-            }
-            Spacer(Modifier.height(12.dp))
-        }
+        item { Text("Mode", style = MaterialTheme.typography.labelLarge); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FolderMode.entries.forEach { candidate -> if (editor.mode == candidate) FilledTonalButton(onClick = { }) { Text(candidate.name.replace('_', ' ').lowercase()) } else OutlinedButton(onClick = { viewModel.updateEditor(editor.copy(mode = candidate)) }) { Text(candidate.name.replace('_', ' ').lowercase()) } } } }
+        item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = viewModel::showConnections) { Text("Cancel") }; Button(onClick = { viewModel.saveEditor(password); password = "" }, enabled = editor.share.isNotBlank()) { Text("Save") } }; Spacer(Modifier.height(12.dp)) }
     }
-
     val picker by viewModel.remotePicker.collectAsState()
-    if (picker.visible) {
-        AlertDialog(
-            onDismissRequest = viewModel::closeRemotePicker,
-            title = { Text("Network folder") },
-            text = {
-                Column {
-                    Text("${editor.host} / ${picker.share}${picker.path.takeIf(String::isNotBlank)?.let { " / $it" }.orEmpty()}")
-                    if (picker.loading) Text("Loading…")
-                    picker.error?.let { Text("Could not browse: $it", color = MaterialTheme.colorScheme.error) }
-                    if (picker.path.isNotEmpty()) Text("←  One level up", Modifier.fillMaxWidth().clickable { viewModel.browsePickerFolder(password, FolderNavigation.parent(picker.path)) }.padding(10.dp))
-                    picker.folders.forEach { folder -> Text("📁 ${folder.substringAfterLast('/')} ", Modifier.fillMaxWidth().clickable { viewModel.browsePickerFolder(password, folder) }.padding(10.dp)) }
-                }
-            },
-            dismissButton = { TextButton(onClick = viewModel::closeRemotePicker) { Text("Cancel") } },
-            confirmButton = { TextButton(onClick = viewModel::usePickerFolder) { Text("Use this folder") } },
-        )
-    }
+    if (picker.visible) AlertDialog(onDismissRequest = viewModel::closeRemotePicker, title = { Text("Network folder") }, text = { Column { Text("${editor.host} / ${picker.share}${picker.path.takeIf(String::isNotBlank)?.let { " / $it" }.orEmpty()}"); if (picker.loading) Text("Loading…"); picker.error?.let { Text("Could not browse: $it", color = MaterialTheme.colorScheme.error) }; if (picker.path.isNotEmpty()) Text("←  One level up", Modifier.fillMaxWidth().clickable { viewModel.browsePickerFolder(password, FolderNavigation.parent(picker.path)) }.padding(10.dp)); picker.folders.forEach { folder -> Text("📁 ${folder.substringAfterLast('/')} ", Modifier.fillMaxWidth().clickable { viewModel.browsePickerFolder(password, folder) }.padding(10.dp)) } } }, dismissButton = { TextButton(onClick = viewModel::closeRemotePicker) { Text("Cancel") } }, confirmButton = { TextButton(onClick = viewModel::usePickerFolder) { Text("Use this folder") } })
 }
 
 private fun friendlyStorageRoot(uri: String?): String = uri?.replace("content://com.android.externalstorage.documents/tree/primary%3A", "Internal storage / ") ?: "Not set"
-private fun formatBytes(bytes: Long): String = when {
-    bytes >= SettingsRepository.BYTES_PER_GIB -> "${bytes / SettingsRepository.BYTES_PER_GIB} GB"
-    bytes >= 1024L * 1024L -> "${bytes / (1024L * 1024L)} MB"
-    bytes >= 1024L -> "${bytes / 1024L} KB"
-    else -> "$bytes B"
-}
+private fun formatBytes(bytes: Long): String = when { bytes >= SettingsRepository.BYTES_PER_GIB -> "${bytes / SettingsRepository.BYTES_PER_GIB} GB"; bytes >= 1024L * 1024L -> "${bytes / (1024L * 1024L)} MB"; bytes >= 1024L -> "${bytes / 1024L} KB"; else -> "$bytes B" }
 private fun downloadPercent(copied: Long, total: Long) = if (total <= 0) 100 else ((copied.toDouble() / total.toDouble()) * 100.0).toInt().coerceIn(0, 100)
 private fun usageRatio(used: Long, total: Long): Float = if (total <= 0L) 0f else (used.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
