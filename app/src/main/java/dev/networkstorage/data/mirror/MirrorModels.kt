@@ -24,3 +24,8 @@ object MirrorDiffPolicy {
         return if (remoteTime > localTime) MirrorDiffState.REMOTE_NEWER else MirrorDiffState.LOCAL_NEWER
     }
 }
+
+object MirrorSyncPolicy {
+    fun canCopyRemoteToLocal(state: MirrorDiffState): Boolean =
+        state == MirrorDiffState.REMOTE_ONLY || state == MirrorDiffState.REMOTE_NEWER
+}
