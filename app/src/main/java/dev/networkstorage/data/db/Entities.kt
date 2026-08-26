@@ -6,6 +6,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import dev.networkstorage.domain.FolderMode
 import dev.networkstorage.domain.ScanStatus
+import dev.networkstorage.domain.CacheState
 
 @Entity(tableName = "connections")
 data class ConnectionEntity(@PrimaryKey val id: String, val name: String, val host: String, val port: Int, val share: String, val basePath: String, val username: String, val domain: String?, val rootMode: FolderMode, val createdAt: Long)
@@ -24,4 +25,16 @@ data class ConnectionSummary(
     val entryCount: Long,
     val lastScanAt: Long?,
     val hasRootRule: Boolean,
+)
+
+@Entity(tableName = "cache_entries", primaryKeys = ["connectionId", "relativePath"], foreignKeys = [ForeignKey(entity = ConnectionEntity::class, parentColumns = ["id"], childColumns = ["connectionId"], onDelete = ForeignKey.CASCADE)], indices = [Index("connectionId")])
+data class CacheEntryEntity(val connectionId: String, val relativePath: String, val localDocumentUri: String, val size: Long, val remoteSize: Long, val remoteLastModified: Long, val state: CacheState, val lastAccessed: Long, val createdAt: Long, val updatedAt: Long)
+
+data class BrowserEntryRow(
+    @androidx.room.Embedded val entry: IndexedEntryEntity,
+    val cacheDocumentUri: String?,
+    val cacheSize: Long?,
+    val cacheRemoteSize: Long?,
+    val cacheRemoteLastModified: Long?,
+    val cacheState: CacheState?,
 )

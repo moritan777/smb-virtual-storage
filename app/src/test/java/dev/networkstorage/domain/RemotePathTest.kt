@@ -12,4 +12,10 @@ class RemotePathTest {
         assertThrows(IllegalArgumentException::class.java) { RemotePath.normalize("/absolute") }
         assertThrows(IllegalArgumentException::class.java) { RemotePath.join("safe", "a/b") }
     }
+    @Test fun folderNavigationDistinguishesRootAndNestedParents() {
+        assertEquals(false, FolderNavigation.hasParent(""))
+        assertEquals(true, FolderNavigation.hasParent("作品/巻一"))
+        assertEquals("作品", FolderNavigation.parent("作品/巻一"))
+        assertEquals("", FolderNavigation.parent("作品"))
+    }
 }

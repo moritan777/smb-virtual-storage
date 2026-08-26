@@ -4,12 +4,12 @@ Network Storage is a non-root Android app that keeps a local metadata index of s
 
 V1 separates **Index only** (metadata), **On-demand** (future evictable complete-file cache), and **Mirror** (future retained one-way copy). Completed files will later open in external apps through safe Android content URIs. A NAS-side delete may mark metadata missing but will not automatically remove a mirror file.
 
-This repository currently implements Steps 0–3: connection registration, protected credentials, read-only SMBJ listing, Room indexing, cancellable manual WorkManager scans, a Room/Paging indexed browser, local registration/index deletion, and a persisted On-demand cache limit. Download, external open, mirror copying, and cache eviction intentionally remain unimplemented.
+This repository currently implements Steps 0–4: connection registration, protected credentials, scanning, a Room/Paging indexed browser, local deletion, separate SAF Cache/Mirror destinations, and complete on-demand cached downloads opened through read-only `ACTION_VIEW` grants. Mirror copying and automatic cache eviction intentionally remain unimplemented.
 
 ## Storage decision
 
-No file bodies are stored in the current phase. The planned on-demand cache uses app-specific external storage plus FileProvider. Mirror must be visible to non-SAF file browsers under `/storage/emulated/0/NetworkStorage/Mirror`, so its later phase will request and explain `MANAGE_EXTERNAL_STORAGE`; that policy-sensitive capability is deliberately deferred until mirror implementation.
+On-demand files use the user-selected SAF Cache tree; Mirror has a different SAF tree setting and is never counted as cache. The system tree picker provides folder creation and persistent access without broad filesystem permission. Cache downloads use `.part`, bounded copying, size validation, and promotion before their document URI can be opened externally.
 
 ## Build
 
-Use JDK 17, the included Gradle 8.11.1 wrapper, and an Android SDK with API 35, then run `./gradlew test assembleDebug` (or `gradlew.bat` on Windows).
+Use JDK 17, a human-managed Gradle installation/wrapper, and an Android SDK with API 35, then run `gradle test assembleDebug`.

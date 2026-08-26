@@ -4,6 +4,10 @@ enum class FolderMode { INDEX_ONLY, ON_DEMAND, MIRROR }
 
 enum class ScanStatus { RUNNING, SUCCEEDED, FAILED, CANCELLED }
 
+enum class CacheState { DOWNLOADING, CACHED, FAILED }
+
+enum class DownloadQueueState { QUEUED, DOWNLOADING, COMPLETED, FAILED, CANCELLED }
+
 enum class NetworkError { AUTHENTICATION, HOST_NOT_FOUND, SHARE_NOT_FOUND, CONNECTION, TIMEOUT, REMOTE_NOT_FOUND, CANCELLED, UNKNOWN }
 
 data class ConnectionConfig(
