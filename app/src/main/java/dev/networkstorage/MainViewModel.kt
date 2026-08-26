@@ -107,6 +107,11 @@ class MainViewModel @Inject constructor(application: Application, private val re
         }
         val connectionId = selectedConnection.value?.connection?.id ?: return
         viewModelScope.launch {
+            val mirrored = runCatching { mirrorRepository.mirroredUriIfCurrent(connectionId, item.relativePath) }.getOrNull()
+            if (mirrored != null) {
+                if (!externalOpen.open(mirrored, item.name)) message.value = "No app can open this file"
+                return@launch
+            }
             val cached = runCatching { cacheRepository.cachedUriIfValid(connectionId, item.relativePath) }.getOrNull()
             if (cached != null) {
                 if (!externalOpen.open(cached, item.name)) message.value = "No app can open this file"
