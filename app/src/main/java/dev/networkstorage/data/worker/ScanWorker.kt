@@ -8,9 +8,15 @@ import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import dev.networkstorage.data.IndexRepository
+import dev.networkstorage.data.cache.CacheRepository
 
 @HiltWorker
-class ScanWorker @AssistedInject constructor(@Assisted context: Context, @Assisted parameters: WorkerParameters, private val repository: IndexRepository) : CoroutineWorker(context, parameters) {
+class ScanWorker @AssistedInject constructor(
+    @Assisted context: Context,
+    @Assisted parameters: WorkerParameters,
+    private val repository: IndexRepository,
+    private val cacheRepository: CacheRepository,
+) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result {
         val connectionId = inputData.getString(KEY_CONNECTION_ID) ?: return Result.failure()
         return try {
@@ -19,10 +25,26 @@ class ScanWorker @AssistedInject constructor(@Assisted context: Context, @Assist
                 finalCount = count
                 setProgress(Data.Builder().putLong(KEY_COUNT, count).putString(KEY_PATH, path).build())
             }
-            Result.success(Data.Builder().putLong(KEY_COUNT, finalCount).build())
-        } catch (_: kotlinx.coroutines.CancellationException) { throw kotlinx.coroutines.CancellationException() }
-        catch (_: Throwable) { Result.failure() }
+            // The scan is already durably successful here. Orphan cache cleanup is deliberately
+            // best-effort and must never downgrade a successful SMB scan to failure.
+            val cleanedBytes = runCatching { cacheRepository.cleanupOrphans(connectionId) }.getOrDefault(0L)
+            Result.success(
+                Data.Builder()
+                    .putLong(KEY_COUNT, finalCount)
+                    .putLong(KEY_CLEANED_CACHE_BYTES, cleanedBytes)
+                    .build()
+            )
+        } catch (_: kotlinx.coroutines.CancellationException) {
+            throw kotlinx.coroutines.CancellationException()
+        } catch (_: Throwable) {
+            Result.failure()
+        }
     }
 
-    companion object { const val KEY_CONNECTION_ID = "connection_id"; const val KEY_COUNT = "entry_count"; const val KEY_PATH = "current_path" }
+    companion object {
+        const val KEY_CONNECTION_ID = "connection_id"
+        const val KEY_COUNT = "entry_count"
+        const val KEY_PATH = "current_path"
+        const val KEY_CLEANED_CACHE_BYTES = "cleaned_cache_bytes"
+    }
 }
