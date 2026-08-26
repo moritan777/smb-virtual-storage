@@ -37,6 +37,9 @@ interface AppDao {
     @Query("DELETE FROM cache_entries WHERE connectionId=:connectionId AND relativePath=:relativePath") suspend fun deleteCache(connectionId: String, relativePath: String)
     @Query("UPDATE cache_entries SET lastAccessed=:now, updatedAt=:now WHERE connectionId=:connectionId AND relativePath=:relativePath") suspend fun touchCache(connectionId: String, relativePath: String, now: Long)
     @Query("SELECT COALESCE(SUM(size), 0) FROM cache_entries WHERE state='CACHED'") fun observeCacheUsage(): Flow<Long>
+    @Query("SELECT * FROM cache_entries WHERE state='CACHED' AND NOT (connectionId=:protectedConnectionId AND relativePath=:protectedPath) ORDER BY lastAccessed ASC") suspend fun lruCacheEntries(protectedConnectionId: String, protectedPath: String): List<CacheEntryEntity>
+    @Query("SELECT * FROM cache_entries WHERE state='CACHED' ORDER BY lastAccessed ASC") suspend fun allCachedEntries(): List<CacheEntryEntity>
+    @Query("DELETE FROM cache_entries") suspend fun deleteAllCacheRows()
 
     @Transaction suspend fun deleteConnection(connectionId: String) = deleteConnectionRow(connectionId)
     @Transaction suspend fun deleteRootIndex(connectionId: String) {
