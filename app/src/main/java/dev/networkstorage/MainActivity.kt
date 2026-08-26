@@ -27,7 +27,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -55,7 +54,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.compose.collectAsLazyPagingItems
 import dagger.hilt.android.AndroidEntryPoint
-import dev.networkstorage.data.db.ConnectionSummary
 import dev.networkstorage.data.mirror.MirrorDiffItem
 import dev.networkstorage.data.mirror.MirrorDiffState
 import dev.networkstorage.data.mirror.MirrorSyncPolicy
@@ -66,16 +64,15 @@ import dev.networkstorage.domain.FolderNavigation
 import java.text.DateFormat
 import java.util.Date
 
-private val ScreenPadding = 14.dp
-private val SectionShape = RoundedCornerShape(16.dp)
+internal val ScreenPadding = 14.dp
+internal val SectionShape = RoundedCornerShape(16.dp)
 private val RowShape = RoundedCornerShape(12.dp)
-private val CompactGap = 4.dp
+internal val CompactGap = 4.dp
 
-private fun displayMode(mode: FolderMode) = when (mode) {
+internal fun displayMode(mode: FolderMode) = when (mode) {
     FolderMode.MIRROR -> "MIRROR"
     FolderMode.ON_DEMAND, FolderMode.INDEX_ONLY -> "ON-DEMAND"
 }
-private fun isMirror(mode: FolderMode) = mode == FolderMode.MIRROR
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -115,58 +112,6 @@ private fun NetworkStorageScreen(viewModel: MainViewModel = hiltViewModel()) {
             }
         }
     }
-}
-
-@Composable
-private fun ConnectionsScreen(viewModel: MainViewModel) {
-    val connections by viewModel.connections.collectAsState()
-    val scan by viewModel.scan.collectAsState()
-    var deleteConnection by remember { mutableStateOf<ConnectionSummary?>(null) }
-    var deleteIndex by remember { mutableStateOf<ConnectionSummary?>(null) }
-
-    Column(Modifier.fillMaxSize().padding(horizontal = ScreenPadding)) {
-        Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Column { Text("Network Storage", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold); Text("Connections and scans", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            FloatingActionButton(onClick = viewModel::openAddConnection) { Text("+") }
-        }
-        Spacer(Modifier.height(10.dp))
-        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(connections.size, key = { connections[it].connection.id }) { index ->
-                val summary = connections[index]
-                var menu by remember { mutableStateOf(false) }
-                ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape, colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                    Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(CompactGap)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column(Modifier.weight(1f)) { Text(summary.connection.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text("${summary.connection.share}${summary.connection.basePath.takeIf(String::isNotBlank)?.let { " / $it" }.orEmpty()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                            Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.secondaryContainer) { Text(displayMode(summary.connection.rootMode), Modifier.padding(horizontal = 8.dp, vertical = 3.dp), style = MaterialTheme.typography.labelSmall) }
-                        }
-                        HorizontalDivider()
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Last scan  ${summary.lastScanAt?.let { DateFormat.getDateTimeInstance().format(Date(it)) } ?: "Never"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("${summary.entryCount} entries", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        if (scan.ownerId == summary.connection.id && scan.state?.isFinished == false) { Text("Scanning… ${scan.count} entries", style = MaterialTheme.typography.bodySmall); LinearProgressIndicator(Modifier.fillMaxWidth()); TextButton(onClick = viewModel::cancelScan) { Text("Cancel") } }
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Button(onClick = { viewModel.browse(summary) }) { Text("▱ Open") }
-                            OutlinedButton(onClick = { viewModel.startScan(summary) }, enabled = summary.hasRootRule) { Text("↻ Scan") }
-                            if (isMirror(summary.connection.rootMode)) OutlinedButton(onClick = { viewModel.openMirror(summary) }, enabled = summary.hasRootRule) { Text("⇄ Sync") }
-                            TextButton(onClick = { menu = true }) { Text("⋮") }
-                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                                DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; viewModel.openEditConnection(summary) })
-                                DropdownMenuItem(text = { Text("Scan") }, onClick = { menu = false; viewModel.startScan(summary) }, enabled = summary.hasRootRule)
-                                if (isMirror(summary.connection.rootMode)) DropdownMenuItem(text = { Text("Sync / compare") }, onClick = { menu = false; viewModel.openMirror(summary) }, enabled = summary.hasRootRule)
-                                DropdownMenuItem(text = { Text("Delete index") }, onClick = { menu = false; deleteIndex = summary }, enabled = summary.hasRootRule)
-                                DropdownMenuItem(text = { Text("Delete connection") }, onClick = { menu = false; deleteConnection = summary })
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    deleteConnection?.let { target -> ConfirmDelete("Delete \"${target.connection.name}\"?", "This removes connection settings, indexed metadata, and saved credentials. Files on the NAS will NOT be deleted.", { deleteConnection = null }, { viewModel.deleteConnection(target); deleteConnection = null }) }
-    deleteIndex?.let { target -> ConfirmDelete("Delete index target?", "This removes the local root rule and indexed metadata only. Nothing on the NAS will be changed.", { deleteIndex = null }, { viewModel.deleteRootIndex(target); deleteIndex = null }) }
 }
 
 @Composable
@@ -275,8 +220,6 @@ private fun SettingsScreen(viewModel: MainViewModel) {
 
 @Composable private fun SettingsSectionCard(title: String, content: @Composable ColumnScope.() -> Unit) { ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape, colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); content() } } }
 @Composable private fun StoragePathBox(uri: String?) { Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceContainer) { Text(friendlyStorageRoot(uri), Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) } }
-@Composable private fun ConfirmDelete(title: String, body: String, dismiss: () -> Unit, confirm: () -> Unit) = AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = { Text(body) }, dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } }, confirmButton = { TextButton(onClick = confirm) { Text("Delete") } })
-
 @Composable
 private fun ConnectionEditorScreen(viewModel: MainViewModel) {
     val editor by viewModel.editor.collectAsState(); var password by remember(editor.id) { mutableStateOf("") }
