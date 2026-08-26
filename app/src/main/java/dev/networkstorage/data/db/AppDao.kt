@@ -23,7 +23,7 @@ interface AppDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun saveScan(value: ScanRunEntity)
     @Query("UPDATE scan_runs SET status=:status, finishedAt=:finishedAt, error=:error WHERE id=:id") suspend fun finishScan(id: String, status: ScanStatus, finishedAt: Long, error: String?)
     @Query("UPDATE scan_runs SET scannedEntries=:count WHERE id=:id") suspend fun updateScanCount(id: String, count: Long)
-    @Query("UPDATE indexed_entries SET remoteExists=0 WHERE connectionId=:connectionId AND lastSeenScanId != :successfulScanId") suspend fun markMissing(connectionId: String, successfulScanId: String)
+    @Query("DELETE FROM indexed_entries WHERE connectionId=:connectionId AND lastSeenScanId != :successfulScanId") suspend fun deleteMissingEntries(connectionId: String, successfulScanId: String)
     @Query("DELETE FROM connections WHERE id=:connectionId") suspend fun deleteConnectionRow(connectionId: String)
     @Query("DELETE FROM folder_rules WHERE connectionId=:connectionId AND relativePath='' ") suspend fun deleteRootRuleRow(connectionId: String)
     @Query("DELETE FROM indexed_entries WHERE connectionId=:connectionId") suspend fun deleteIndexedEntries(connectionId: String)
@@ -39,6 +39,7 @@ interface AppDao {
     @Query("SELECT COALESCE(SUM(size), 0) FROM cache_entries WHERE state='CACHED'") fun observeCacheUsage(): Flow<Long>
     @Query("SELECT * FROM cache_entries WHERE state='CACHED' AND NOT (connectionId=:protectedConnectionId AND relativePath=:protectedPath) ORDER BY lastAccessed ASC") suspend fun lruCacheEntries(protectedConnectionId: String, protectedPath: String): List<CacheEntryEntity>
     @Query("SELECT * FROM cache_entries WHERE state='CACHED' ORDER BY lastAccessed ASC") suspend fun allCachedEntries(): List<CacheEntryEntity>
+    @Query("SELECT cache_entries.* FROM cache_entries LEFT JOIN indexed_entries ON indexed_entries.connectionId=cache_entries.connectionId AND indexed_entries.relativePath=cache_entries.relativePath WHERE cache_entries.connectionId=:connectionId AND indexed_entries.relativePath IS NULL") suspend fun orphanCacheEntries(connectionId: String): List<CacheEntryEntity>
     @Query("DELETE FROM cache_entries") suspend fun deleteAllCacheRows()
 
     @Transaction suspend fun deleteConnection(connectionId: String) = deleteConnectionRow(connectionId)
@@ -50,7 +51,7 @@ interface AppDao {
 
     @Transaction
     suspend fun completeScan(connectionId: String, scanId: String, count: Long, now: Long) {
-        markMissing(connectionId, scanId)
+        deleteMissingEntries(connectionId, scanId)
         updateScanCount(scanId, count)
         finishScan(scanId, ScanStatus.SUCCEEDED, now, null)
     }
