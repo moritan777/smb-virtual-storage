@@ -20,8 +20,8 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
     val cacheLimitBytes: Flow<Long> = context.settingsDataStore.data.map { it[CACHE_LIMIT] ?: DEFAULT_CACHE_LIMIT_BYTES }
     val cacheRootUri: Flow<String?> = context.settingsDataStore.data.map { it[CACHE_ROOT] }
     val mirrorRootUri: Flow<String?> = context.settingsDataStore.data.map { it[MIRROR_ROOT] }
-    val automaticMirrorSyncEnabled: Flow<Boolean> = context.settingsDataStore.data.map { it[AUTOMATIC_MIRROR_SYNC_ENABLED] ?: false }
-    val automaticMirrorSyncIntervalMinutes: Flow<Long> = context.settingsDataStore.data.map { it[AUTOMATIC_MIRROR_SYNC_INTERVAL_MINUTES] ?: DEFAULT_AUTOMATIC_MIRROR_SYNC_INTERVAL_MINUTES }
+    val automaticMirrorSyncEnabled: Flow<Boolean> = context.settingsDataStore.data.map { it[AUTOMATIC_MIRROR_SYNC_ENABLED_KEY] ?: false }
+    val automaticMirrorSyncIntervalMinutes: Flow<Long> = context.settingsDataStore.data.map { it[AUTOMATIC_MIRROR_SYNC_INTERVAL_MINUTES_KEY] ?: DEFAULT_AUTOMATIC_MIRROR_SYNC_INTERVAL_MINUTES }
 
     suspend fun setCacheLimitBytes(bytes: Long) {
         require(bytes >= BYTES_PER_GIB) { "Cache limit must be at least 1 GiB" }
@@ -35,25 +35,25 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
     }
 
     suspend fun setAutomaticMirrorSyncEnabled(enabled: Boolean) {
-        context.settingsDataStore.edit { it[AUTOMATIC_MIRROR_SYNC_ENABLED] = enabled }
+        context.settingsDataStore.edit { it[AUTOMATIC_MIRROR_SYNC_ENABLED_KEY] = enabled }
     }
 
     suspend fun setAutomaticMirrorSyncIntervalMinutes(minutes: Long) {
-        require(minutes in AUTOMATIC_MIRROR_SYNC_INTERVAL_MINUTES) { "Unsupported automatic mirror sync interval" }
-        context.settingsDataStore.edit { it[AUTOMATIC_MIRROR_SYNC_INTERVAL_MINUTES] = minutes }
+        require(minutes in AUTOMATIC_MIRROR_SYNC_INTERVAL_OPTIONS_MINUTES) { "Unsupported automatic mirror sync interval" }
+        context.settingsDataStore.edit { it[AUTOMATIC_MIRROR_SYNC_INTERVAL_MINUTES_KEY] = minutes }
     }
 
     companion object {
         const val BYTES_PER_GIB = 1024L * 1024L * 1024L
         const val DEFAULT_CACHE_LIMIT_BYTES = 10L * BYTES_PER_GIB
         val PRESET_GIB = listOf(5L, 10L, 20L, 50L)
-        val AUTOMATIC_MIRROR_SYNC_INTERVAL_MINUTES = listOf(15L, 60L, 360L, 1440L)
+        val AUTOMATIC_MIRROR_SYNC_INTERVAL_OPTIONS_MINUTES = listOf(15L, 60L, 360L, 1440L)
         const val DEFAULT_AUTOMATIC_MIRROR_SYNC_INTERVAL_MINUTES = 60L
         private val CACHE_LIMIT = longPreferencesKey("cacheLimitBytes")
         private val CACHE_ROOT = stringPreferencesKey("cacheRootUri")
         private val MIRROR_ROOT = stringPreferencesKey("mirrorRootUri")
-        private val AUTOMATIC_MIRROR_SYNC_ENABLED = booleanPreferencesKey("automaticMirrorSyncEnabled")
-        private val AUTOMATIC_MIRROR_SYNC_INTERVAL_MINUTES = longPreferencesKey("automaticMirrorSyncIntervalMinutes")
+        private val AUTOMATIC_MIRROR_SYNC_ENABLED_KEY = booleanPreferencesKey("automaticMirrorSyncEnabled")
+        private val AUTOMATIC_MIRROR_SYNC_INTERVAL_MINUTES_KEY = longPreferencesKey("automaticMirrorSyncIntervalMinutes")
 
         fun gibToBytes(input: String): Result<Long> = runCatching {
             val gib = input.toLong()
