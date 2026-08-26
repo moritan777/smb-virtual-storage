@@ -22,10 +22,14 @@ import dev.networkstorage.data.credential.CredentialStore
 import dev.networkstorage.data.db.AppDao
 import dev.networkstorage.data.db.ConnectionEntity
 import dev.networkstorage.data.db.ConnectionSummary
+import dev.networkstorage.data.mirror.MirrorDiffItem
+import dev.networkstorage.data.mirror.MirrorRepository
+import dev.networkstorage.data.mirror.MirrorSyncPolicy
 import dev.networkstorage.data.settings.SettingsRepository
 import dev.networkstorage.data.settings.StorageRootKind
 import dev.networkstorage.data.smb.SmbClient
 import dev.networkstorage.data.worker.DownloadWorker
+import dev.networkstorage.data.worker.MirrorWorker
 import dev.networkstorage.data.worker.ScanWorker
 import dev.networkstorage.domain.ConnectionConfig
 import dev.networkstorage.domain.Credential
@@ -47,7 +51,7 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 
-enum class AppScreen { CONNECTIONS, CONNECTION_EDIT, BROWSER, SETTINGS }
+enum class AppScreen { CONNECTIONS, CONNECTION_EDIT, BROWSER, MIRROR, SETTINGS }
 enum class LocalFileState { REMOTE_ONLY, DOWNLOADING, CACHED, REMOTE_UPDATED, FAILED }
 object BrowserPresentation {
     fun stateIcon(state: LocalFileState) = when(state) { LocalFileState.REMOTE_ONLY -> "☁"; LocalFileState.DOWNLOADING -> "⏳"; LocalFileState.CACHED -> "✓"; LocalFileState.REMOTE_UPDATED -> "↓"; LocalFileState.FAILED -> "!" }
@@ -55,6 +59,7 @@ object BrowserPresentation {
 }
 data class BrowserItem(val relativePath: String, val name: String, val isDirectory: Boolean, val size: Long, val lastModified: Long, val mode: FolderMode, val remoteExists: Boolean, val localState: LocalFileState = LocalFileState.REMOTE_ONLY)
 data class ScanUiState(val workId: UUID? = null, val state: WorkInfo.State? = null, val count: Long = 0, val path: String = "", val total: Long = 0, val ownerId: String? = null)
+data class MirrorUiState(val loading: Boolean = false, val items: List<MirrorDiffItem> = emptyList(), val workId: UUID? = null, val state: WorkInfo.State? = null, val currentPath: String = "", val copied: Long = 0, val currentTotal: Long = 0, val completedFiles: Int = 0, val totalFiles: Int = 0)
 data class ConnectionEditorState(val id: String?=null, val name: String="", val host: String="", val port: String="445", val username: String="", val domain: String="", val share: String="", val basePath: String="", val mode: FolderMode=FolderMode.ON_DEMAND) {
     val networkFolder: String get() = if (share.isBlank()) "Not selected" else "\\\\$host\\$share${basePath.takeIf(String::isNotBlank)?.let { "\\${it.replace('/', '\\')}" }.orEmpty()}"
 }
@@ -62,7 +67,7 @@ data class RemotePickerState(val visible: Boolean=false, val share: String?=null
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
-class MainViewModel @Inject constructor(application: Application, private val repository: IndexRepository, private val dao: AppDao, private val settings: SettingsRepository, private val smb: SmbClient, private val credentials: CredentialStore, private val externalOpen: ExternalOpenService, private val cacheRepository: CacheRepository) : AndroidViewModel(application) {
+class MainViewModel @Inject constructor(application: Application, private val repository: IndexRepository, private val dao: AppDao, private val settings: SettingsRepository, private val smb: SmbClient, private val credentials: CredentialStore, private val externalOpen: ExternalOpenService, private val cacheRepository: CacheRepository, private val mirrorRepository: MirrorRepository) : AndroidViewModel(application) {
     private val workManager = WorkManager.getInstance(application)
     val screen = MutableStateFlow(AppScreen.CONNECTIONS)
     val connections = dao.observeConnectionSummaries().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -73,6 +78,7 @@ class MainViewModel @Inject constructor(application: Application, private val re
     val mirrorRootUri = settings.mirrorRootUri.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val cacheUsage = dao.observeCacheUsage().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
     val download = MutableStateFlow(ScanUiState())
+    val mirror = MutableStateFlow(MirrorUiState())
     val remotePicker = MutableStateFlow(RemotePickerState())
     val editor = MutableStateFlow(ConnectionEditorState())
     val scan = MutableStateFlow(ScanUiState())
@@ -102,13 +108,59 @@ class MainViewModel @Inject constructor(application: Application, private val re
     fun openEditConnection(summary: ConnectionSummary) { val c=summary.connection; editor.value=ConnectionEditorState(c.id,c.name,c.host,c.port.toString(),c.username,c.domain.orEmpty(),c.share,c.basePath,c.rootMode); screen.value=AppScreen.CONNECTION_EDIT }
     fun updateEditor(value: ConnectionEditorState) { editor.value = value }
     fun saveEditor(password: String) = viewModelScope.launch { val value=editor.value; runCatching { if(value.id==null) repository.addConnection(value.name,value.host,value.port.toIntOrNull()?:445,value.share,value.basePath,value.username,password.toCharArray(),value.domain,value.mode) else repository.updateConnection(value.id,value.name,value.host,value.port.toIntOrNull()?:445,value.share,value.basePath,value.username,password.takeIf(String::isNotEmpty)?.toCharArray(),value.domain,value.mode) }.onSuccess { message.value="Connection saved"; screen.value=AppScreen.CONNECTIONS }.onFailure { message.value="Check the connection information and network folder" } }
-    fun add(name:String,host:String,port:String,share:String,basePath:String,username:String,password:String,domain:String,mode:FolderMode)=viewModelScope.launch { runCatching { repository.addConnection(name,host,port.toIntOrNull()?:445,share,basePath,username,password.toCharArray(),domain,mode) }.onSuccess { message.value="Connection saved" }.onFailure { message.value="Invalid connection settings" } }
     fun deleteConnection(connection:ConnectionSummary)=viewModelScope.launch { workManager.cancelUniqueWork("manual-scan-${connection.connection.id}"); runCatching { repository.deleteConnection(connection.connection.id) }.onSuccess { if(selectedConnection.value?.connection?.id==connection.connection.id) selectedConnection.value=null; message.value="Local connection and index deleted" }.onFailure { message.value="Could not safely delete the local connection" } }
     fun deleteRootIndex(connection:ConnectionSummary)=viewModelScope.launch { workManager.cancelUniqueWork("manual-scan-${connection.connection.id}"); runCatching { repository.deleteRootIndex(connection.connection.id) }.onSuccess { message.value="Local index target deleted" }.onFailure { message.value="Could not delete the local index target" } }
     fun setCacheLimitGib(input:String)=viewModelScope.launch { SettingsRepository.gibToBytes(input).onSuccess { bytes->settings.setCacheLimitBytes(bytes); message.value="Cache limit saved" }.onFailure { message.value="Enter a whole number of at least 1 GB" } }
     fun saveStorageRoot(kind:StorageRootKind,uri:Uri)=viewModelScope.launch { runCatching { settings.setStorageRoot(kind,uri.toString()) }.onSuccess { message.value="Storage folder saved; existing files were not moved" }.onFailure { message.value="Cache and Mirror folders must not be the same or nested" } }
     fun removeCache(item: BrowserItem)=viewModelScope.launch { val id=selectedConnection.value?.connection?.id?:return@launch; runCatching { cacheRepository.remove(id,item.relativePath) }.onSuccess { message.value=if(it) "Cached copy removed" else "Cache could not be removed" }.onFailure { message.value="Cache could not be removed" } }
     fun clearCache()=viewModelScope.launch { if(download.value.state?.isFinished==false) { message.value="Wait for the current download to finish or cancel it first"; return@launch }; runCatching { cacheRepository.clearAll() }.onSuccess { message.value="Cache cleared (${it} bytes freed)" }.onFailure { message.value="Some cached files could not be removed" } }
+
+    fun openMirror(connection: ConnectionSummary) {
+        selectedConnection.value = connection
+        screen.value = AppScreen.MIRROR
+        compareMirror()
+    }
+    fun compareMirror() = viewModelScope.launch {
+        val connectionId = selectedConnection.value?.connection?.id ?: return@launch
+        if (mirrorRootUri.value == null) { message.value = "Set the Mirror folder in Settings"; screen.value = AppScreen.SETTINGS; return@launch }
+        mirror.value = mirror.value.copy(loading = true)
+        runCatching { mirrorRepository.compare(connectionId) }
+            .onSuccess { mirror.value = mirror.value.copy(loading = false, items = it) }
+            .onFailure { mirror.value = mirror.value.copy(loading = false); message.value = "Mirror comparison failed" }
+    }
+    fun syncMirror(item: MirrorDiffItem) {
+        if (!MirrorSyncPolicy.canCopyRemoteToLocal(item.state)) return
+        enqueueMirror(item.relativePath)
+    }
+    fun syncAllMirror() = enqueueMirror(null)
+    private fun enqueueMirror(path: String?) {
+        val connectionId = selectedConnection.value?.connection?.id ?: return
+        if (mirrorRootUri.value == null) { message.value = "Set the Mirror folder in Settings"; screen.value = AppScreen.SETTINGS; return }
+        val request = OneTimeWorkRequestBuilder<MirrorWorker>().setInputData(workDataOf(MirrorWorker.KEY_CONNECTION_ID to connectionId, MirrorWorker.KEY_PATH to path)).build()
+        workManager.enqueueUniqueWork("mirror-sync-$connectionId", ExistingWorkPolicy.REPLACE, request)
+        mirror.value = mirror.value.copy(workId = request.id, state = WorkInfo.State.ENQUEUED, currentPath = path.orEmpty(), copied = 0, currentTotal = 0, completedFiles = 0, totalFiles = 0)
+        viewModelScope.launch {
+            workManager.getWorkInfoByIdFlow(request.id).collect { info ->
+                if (info == null) return@collect
+                mirror.value = mirror.value.copy(
+                    workId = request.id,
+                    state = info.state,
+                    currentPath = info.progress.getString(MirrorWorker.KEY_CURRENT_PATH).orEmpty(),
+                    copied = info.progress.getLong(MirrorWorker.KEY_CURRENT_COPIED, 0),
+                    currentTotal = info.progress.getLong(MirrorWorker.KEY_CURRENT_TOTAL, 0),
+                    completedFiles = info.progress.getInt(MirrorWorker.KEY_COMPLETED, 0),
+                    totalFiles = info.progress.getInt(MirrorWorker.KEY_TOTAL_FILES, 0),
+                )
+                if (info.state == WorkInfo.State.SUCCEEDED) {
+                    message.value = "Mirror sync completed"
+                    compareMirror()
+                } else if (info.state == WorkInfo.State.FAILED) {
+                    message.value = "Mirror sync failed: ${info.outputData.getString(MirrorWorker.KEY_ERROR).orEmpty()}"
+                }
+            }
+        }
+    }
+    fun cancelMirrorSync() { mirror.value.workId?.let(workManager::cancelWorkById) }
 
     fun enqueueDownload(item:BrowserItem) {
         val connectionId=selectedConnection.value?.connection?.id?:return
