@@ -29,12 +29,14 @@ class PeriodicMirrorWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         if (settings.mirrorRootUri.first() == null) return Result.success(summary(0, 0, 0L))
 
+        setForeground(MirrorForeground.info(applicationContext, "Automatic Mirror sync", "Checking NAS…"))
         var completedFiles = 0
         var copiedBytes = 0L
         return try {
             var completedConnections = 0
 
             dao.mirrorConnections().forEach { connection ->
+                setForeground(MirrorForeground.info(applicationContext, "Automatic Mirror sync", "Scanning ${connection.name}…"))
                 setProgress(
                     Data.Builder()
                         .putString(KEY_CONNECTION_ID, connection.id)
@@ -64,6 +66,8 @@ class PeriodicMirrorWorker @AssistedInject constructor(
 
                 candidates.forEach { item ->
                     val size = item.remoteSize ?: 0L
+                    var lastForegroundPercent = -1
+                    setForeground(MirrorForeground.info(applicationContext, "Automatic Mirror sync", item.name, 0L, size))
                     mirrorRepository.copyRemoteToLocal(connection.id, item.relativePath) { copied, total ->
                         setProgress(
                             Data.Builder()
@@ -76,6 +80,11 @@ class PeriodicMirrorWorker @AssistedInject constructor(
                                 .putInt(KEY_COMPLETED_FILES, completedFiles)
                                 .build()
                         )
+                        val percent = if (total > 0L) ((copied.toDouble() / total.toDouble()) * 100.0).toInt().coerceIn(0, 100) else 100
+                        if (percent == 100 || percent >= lastForegroundPercent + 5) {
+                            lastForegroundPercent = percent
+                            setForeground(MirrorForeground.info(applicationContext, "Automatic Mirror sync", item.name, copied, total))
+                        }
                     }
                     completedFiles += 1
                     copiedBytes += size
