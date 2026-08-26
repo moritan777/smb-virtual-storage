@@ -12,4 +12,16 @@ class MirrorSyncPolicyTest {
         assertFalse(MirrorSyncPolicy.canCopyRemoteToLocal(MirrorDiffState.LOCAL_ONLY))
         assertFalse(MirrorSyncPolicy.canCopyRemoteToLocal(MirrorDiffState.LOCAL_NEWER))
     }
+
+    @Test fun nasDeletionNeverTurnsLocalOnlyFileIntoAutomaticDownloadCandidate() {
+        val afterNasDeletion = MirrorDiffPolicy.classify(null, null, 1024, 5000)
+        assertTrue(afterNasDeletion == MirrorDiffState.LOCAL_ONLY)
+        assertFalse(MirrorSyncPolicy.canCopyRemoteToLocal(afterNasDeletion))
+    }
+
+    @Test fun localNewerMirrorIsNeverOverwrittenByAutomaticSync() {
+        val localNewer = MirrorDiffPolicy.classify(1024, 1000, 2048, 5000)
+        assertTrue(localNewer == MirrorDiffState.LOCAL_NEWER)
+        assertFalse(MirrorSyncPolicy.canCopyRemoteToLocal(localNewer))
+    }
 }
