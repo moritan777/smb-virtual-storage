@@ -23,11 +23,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -46,16 +43,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.paging.compose.collectAsLazyPagingItems
 import dagger.hilt.android.AndroidEntryPoint
-import dev.networkstorage.data.db.ConnectionSummary
 import dev.networkstorage.data.mirror.MirrorDiffItem
 import dev.networkstorage.data.mirror.MirrorDiffState
 import dev.networkstorage.data.mirror.MirrorSyncPolicy
@@ -66,16 +60,15 @@ import dev.networkstorage.domain.FolderNavigation
 import java.text.DateFormat
 import java.util.Date
 
-private val ScreenPadding = 14.dp
-private val SectionShape = RoundedCornerShape(16.dp)
-private val RowShape = RoundedCornerShape(12.dp)
-private val CompactGap = 4.dp
+internal val ScreenPadding = 14.dp
+internal val SectionShape = RoundedCornerShape(16.dp)
+internal val RowShape = RoundedCornerShape(12.dp)
+internal val CompactGap = 4.dp
 
-private fun displayMode(mode: FolderMode) = when (mode) {
+internal fun displayMode(mode: FolderMode) = when (mode) {
     FolderMode.MIRROR -> "MIRROR"
     FolderMode.ON_DEMAND, FolderMode.INDEX_ONLY -> "ON-DEMAND"
 }
-private fun isMirror(mode: FolderMode) = mode == FolderMode.MIRROR
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -118,58 +111,6 @@ private fun NetworkStorageScreen(viewModel: MainViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun ConnectionsScreen(viewModel: MainViewModel) {
-    val connections by viewModel.connections.collectAsState()
-    val scan by viewModel.scan.collectAsState()
-    var deleteConnection by remember { mutableStateOf<ConnectionSummary?>(null) }
-    var deleteIndex by remember { mutableStateOf<ConnectionSummary?>(null) }
-
-    Column(Modifier.fillMaxSize().padding(horizontal = ScreenPadding)) {
-        Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Column { Text("Network Storage", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold); Text("Connections and scans", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            FloatingActionButton(onClick = viewModel::openAddConnection) { Text("+") }
-        }
-        Spacer(Modifier.height(10.dp))
-        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(connections.size, key = { connections[it].connection.id }) { index ->
-                val summary = connections[index]
-                var menu by remember { mutableStateOf(false) }
-                ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape, colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                    Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(CompactGap)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column(Modifier.weight(1f)) { Text(summary.connection.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text("${summary.connection.share}${summary.connection.basePath.takeIf(String::isNotBlank)?.let { " / $it" }.orEmpty()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                            Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.secondaryContainer) { Text(displayMode(summary.connection.rootMode), Modifier.padding(horizontal = 8.dp, vertical = 3.dp), style = MaterialTheme.typography.labelSmall) }
-                        }
-                        HorizontalDivider()
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Last scan  ${summary.lastScanAt?.let { DateFormat.getDateTimeInstance().format(Date(it)) } ?: "Never"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("${summary.entryCount} entries", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        if (scan.ownerId == summary.connection.id && scan.state?.isFinished == false) { Text("Scanning… ${scan.count} entries", style = MaterialTheme.typography.bodySmall); LinearProgressIndicator(Modifier.fillMaxWidth()); TextButton(onClick = viewModel::cancelScan) { Text("Cancel") } }
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Button(onClick = { viewModel.browse(summary) }) { Text("▱ Open") }
-                            OutlinedButton(onClick = { viewModel.startScan(summary) }, enabled = summary.hasRootRule) { Text("↻ Scan") }
-                            if (isMirror(summary.connection.rootMode)) OutlinedButton(onClick = { viewModel.openMirror(summary) }, enabled = summary.hasRootRule) { Text("⇄ Sync") }
-                            TextButton(onClick = { menu = true }) { Text("⋮") }
-                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                                DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; viewModel.openEditConnection(summary) })
-                                DropdownMenuItem(text = { Text("Scan") }, onClick = { menu = false; viewModel.startScan(summary) }, enabled = summary.hasRootRule)
-                                if (isMirror(summary.connection.rootMode)) DropdownMenuItem(text = { Text("Sync / compare") }, onClick = { menu = false; viewModel.openMirror(summary) }, enabled = summary.hasRootRule)
-                                DropdownMenuItem(text = { Text("Delete index") }, onClick = { menu = false; deleteIndex = summary }, enabled = summary.hasRootRule)
-                                DropdownMenuItem(text = { Text("Delete connection") }, onClick = { menu = false; deleteConnection = summary })
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    deleteConnection?.let { target -> ConfirmDelete("Delete \"${target.connection.name}\"?", "This removes connection settings, indexed metadata, and saved credentials. Files on the NAS will NOT be deleted.", { deleteConnection = null }, { viewModel.deleteConnection(target); deleteConnection = null }) }
-    deleteIndex?.let { target -> ConfirmDelete("Delete index target?", "This removes the local root rule and indexed metadata only. Nothing on the NAS will be changed.", { deleteIndex = null }, { viewModel.deleteRootIndex(target); deleteIndex = null }) }
-}
-
-@Composable
 private fun SyncScreen(viewModel: MainViewModel) {
     val connection by viewModel.selectedConnection.collectAsState(); val mirror by viewModel.mirror.collectAsState(); val root by viewModel.mirrorRootUri.collectAsState()
     val syncable = mirror.items.count { MirrorSyncPolicy.canCopyRemoteToLocal(it.state) }
@@ -193,28 +134,6 @@ private fun MirrorRow(item: MirrorDiffItem, idle: Boolean, onSync: () -> Unit) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) {
             Text(icon, style = MaterialTheme.typography.titleMedium); Spacer(Modifier.width(8.dp)); Column(Modifier.weight(1f)) { Text(item.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("$label • NAS ${item.remoteSize?.let(::formatBytes) ?: "—"} • Mirror ${item.localSize?.let(::formatBytes) ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             if (MirrorSyncPolicy.canCopyRemoteToLocal(item.state)) TextButton(onClick = onSync, enabled = idle) { Text("Sync") }
-        }
-    }
-}
-
-@Composable
-private fun BrowserScreen(viewModel: MainViewModel) {
-    val connection by viewModel.selectedConnection.collectAsState(); val path by viewModel.currentPath.collectAsState(); val items = viewModel.browserItems.collectAsLazyPagingItems(); val download by viewModel.download.collectAsState()
-    Column(Modifier.fillMaxSize().padding(horizontal = ScreenPadding)) {
-        Spacer(Modifier.height(8.dp)); val root = connection?.connection?.let { listOf(it.share, it.basePath).filter(String::isNotBlank).joinToString(" / ") }.orEmpty(); Text(path.substringAfterLast('/', root.substringAfterLast('/', connection?.connection?.name ?: "Select a connection")), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold); Text(listOfNotNull(connection?.connection?.name, root.takeIf(String::isNotEmpty), path.takeIf(String::isNotEmpty)).joinToString(" / "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis); Spacer(Modifier.height(6.dp))
-        if (path.isNotEmpty()) Surface(shape = RowShape, color = MaterialTheme.colorScheme.surfaceContainer) { Text("← One level up", Modifier.fillMaxWidth().clickable { viewModel.browserBack() }.padding(horizontal = 10.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium) }
-        download.state?.takeIf { !it.isFinished }?.let { Spacer(Modifier.height(6.dp)); Surface(shape = RowShape, color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)) { Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("Downloading ${download.path}", style = MaterialTheme.typography.bodyMedium); LinearProgressIndicator(progress = { usageRatio(download.count, download.total) }, modifier = Modifier.fillMaxWidth()); Text("${formatBytes(download.count)} / ${formatBytes(download.total)} (${downloadPercent(download.count, download.total)}%)", style = MaterialTheme.typography.bodySmall); TextButton(onClick = viewModel::cancelDownload) { Text("Cancel") } } } }
-        Spacer(Modifier.height(6.dp)); LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) { items(items.itemCount) { index -> items[index]?.let { item -> BrowserRow(item, onClick = { viewModel.openFolder(item) }, onRemoveCache = { viewModel.removeCache(item) }) } } }
-    }
-}
-
-@Composable
-private fun BrowserRow(item: BrowserItem, onClick: () -> Unit, onRemoveCache: () -> Unit) {
-    val missingColor = if (item.remoteExists) Color.Unspecified else MaterialTheme.colorScheme.error; var menu by remember(item.relativePath) { mutableStateOf(false) }; val hasCache = !item.isDirectory && (item.localState == LocalFileState.CACHED || item.localState == LocalFileState.REMOTE_UPDATED)
-    Surface(shape = RowShape, color = MaterialTheme.colorScheme.surfaceContainerLow) {
-        Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp)) {
-            val icon = if (item.isDirectory) "📁" else BrowserPresentation.stateIcon(item.localState); Text(icon, style = MaterialTheme.typography.titleMedium); Spacer(Modifier.width(8.dp)); Column(Modifier.weight(1f)) { Text(item.name, color = missingColor, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis); if (!item.isDirectory) Text(formatBytes(item.size), color = if (item.remoteExists) MaterialTheme.colorScheme.onSurfaceVariant else missingColor, style = MaterialTheme.typography.bodySmall) }
-            if (item.isDirectory) Text("›", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) else if (hasCache) { TextButton(onClick = { menu = true }) { Text("⋮") }; DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) { DropdownMenuItem(text = { Text("Remove cached copy") }, onClick = { menu = false; onRemoveCache() }) } }
         }
     }
 }
@@ -275,8 +194,6 @@ private fun SettingsScreen(viewModel: MainViewModel) {
 
 @Composable private fun SettingsSectionCard(title: String, content: @Composable ColumnScope.() -> Unit) { ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape, colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); content() } } }
 @Composable private fun StoragePathBox(uri: String?) { Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceContainer) { Text(friendlyStorageRoot(uri), Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) } }
-@Composable private fun ConfirmDelete(title: String, body: String, dismiss: () -> Unit, confirm: () -> Unit) = AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = { Text(body) }, dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } }, confirmButton = { TextButton(onClick = confirm) { Text("Delete") } })
-
 @Composable
 private fun ConnectionEditorScreen(viewModel: MainViewModel) {
     val editor by viewModel.editor.collectAsState(); var password by remember(editor.id) { mutableStateOf("") }
@@ -295,7 +212,6 @@ private fun ConnectionEditorScreen(viewModel: MainViewModel) {
 }
 
 private fun friendlyStorageRoot(uri: String?): String = uri?.replace("content://com.android.externalstorage.documents/tree/primary%3A", "Internal storage / ") ?: "Not set"
-private fun formatBytes(bytes: Long): String = when { bytes >= SettingsRepository.BYTES_PER_GIB -> "${bytes / SettingsRepository.BYTES_PER_GIB} GB"; bytes >= 1024L * 1024L -> "${bytes / (1024L * 1024L)} MB"; bytes >= 1024L -> "${bytes / 1024L} KB"; else -> "$bytes B" }
-private fun downloadPercent(copied: Long, total: Long) = if (total <= 0) 100 else ((copied.toDouble() / total.toDouble()) * 100.0).toInt().coerceIn(0, 100)
-private fun usageRatio(used: Long, total: Long): Float = if (total <= 0L) 0f else (used.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
+internal fun formatBytes(bytes: Long): String = when { bytes >= SettingsRepository.BYTES_PER_GIB -> "${bytes / SettingsRepository.BYTES_PER_GIB} GB"; bytes >= 1024L * 1024L -> "${bytes / (1024L * 1024L)} MB"; bytes >= 1024L -> "${bytes / 1024L} KB"; else -> "$bytes B" }
+internal fun usageRatio(used: Long, total: Long): Float = if (total <= 0L) 0f else (used.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
 private fun automaticSyncIntervalLabel(minutes: Long): String = when (minutes) { 15L -> "15 min"; 60L -> "1 h"; 360L -> "6 h"; 1440L -> "24 h"; else -> "$minutes min" }
