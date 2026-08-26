@@ -16,13 +16,13 @@ import javax.inject.Singleton
 class MirrorSyncScheduler @Inject constructor(@ApplicationContext context: Context) {
     private val workManager = WorkManager.getInstance(context)
 
-    fun schedule(intervalHours: Long) {
-        require(intervalHours >= MIN_INTERVAL_HOURS)
+    fun schedule(intervalMinutes: Long) {
+        require(intervalMinutes >= MIN_INTERVAL_MINUTES)
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .setRequiresBatteryNotLow(true)
             .build()
-        val request = PeriodicWorkRequestBuilder<PeriodicMirrorWorker>(intervalHours, TimeUnit.HOURS)
+        val request = PeriodicWorkRequestBuilder<PeriodicMirrorWorker>(intervalMinutes, TimeUnit.MINUTES)
             .setConstraints(constraints)
             .build()
         workManager.enqueueUniquePeriodicWork(
@@ -38,6 +38,6 @@ class MirrorSyncScheduler @Inject constructor(@ApplicationContext context: Conte
 
     companion object {
         const val UNIQUE_WORK_NAME = "periodic-mirror-sync"
-        const val MIN_INTERVAL_HOURS = 1L
+        const val MIN_INTERVAL_MINUTES = 15L
     }
 }
