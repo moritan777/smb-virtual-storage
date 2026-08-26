@@ -57,7 +57,7 @@ data class ScanUiState(val workId: UUID? = null, val state: WorkInfo.State? = nu
 data class ConnectionEditorState(val id: String?=null, val name: String="", val host: String="", val port: String="445", val username: String="", val domain: String="", val share: String="", val basePath: String="", val mode: FolderMode=FolderMode.ON_DEMAND) {
     val networkFolder: String get() = if (share.isBlank()) "Not selected" else "\\\\$host\\$share${basePath.takeIf(String::isNotBlank)?.let { "\\${it.replace('/', '\\')}" }.orEmpty()}"
 }
-data class RemotePickerState(val visible: Boolean=false, val share: String?=null, val path: String="", val shares: List<String> = emptyList(), val folders: List<String> = emptyList(), val loading: Boolean=false, val error: String?=null)
+data class RemotePickerState(val visible: Boolean=false, val share: String?=null, val path: String="", val folders: List<String> = emptyList(), val loading: Boolean=false, val error: String?=null)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -163,19 +163,19 @@ class MainViewModel @Inject constructor(application: Application, private val re
 
     fun openNetworkFolderPicker(password: String) = viewModelScope.launch {
         val value = editor.value
-        if (value.host.isBlank() || value.username.isBlank() || (password.isBlank() && value.id == null)) { message.value = "Enter connection information first"; return@launch }
-        remotePicker.value = RemotePickerState(visible=true, loading=true)
-        withPickerCredential(value, password) { config, credential -> smb.listShares(config, credential) }
-            .onSuccess { remotePicker.value = RemotePickerState(visible=true, shares=it, error=if (it.isEmpty()) "NO_SHARE" else null) }
-            .onFailure { remotePicker.value = RemotePickerState(visible=true, error=safePickerError(it)) }
+        if (value.host.isBlank() || value.username.isBlank() || value.share.isBlank() || (password.isBlank() && value.id == null)) { message.value = "Enter Host, Share, Username and Password first"; return@launch }
+        remotePicker.value = RemotePickerState(visible=true, share=value.share, path="", loading=true)
+        loadPickerFolder(value, password, "")
     }
-    fun selectPickerShare(share: String, password: String) { editor.value = editor.value.copy(share=share, basePath=""); browsePickerFolder(password, "") }
     fun browsePickerFolder(password: String, path: String) = viewModelScope.launch {
-        val value = editor.value
-        val normalized = runCatching { RemotePath.normalize(path) }.getOrElse { remotePicker.value = remotePicker.value.copy(error="INVALID_PATH", loading=false); return@launch }
-        remotePicker.value = remotePicker.value.copy(share=value.share, path=normalized, loading=true, error=null)
+        loadPickerFolder(editor.value, password, path)
+    }
+    private suspend fun loadPickerFolder(value: ConnectionEditorState, password: String, path: String) {
+        val normalized = runCatching { RemotePath.normalize(path) }.getOrElse { remotePicker.value = remotePicker.value.copy(error="INVALID_PATH", loading=false); return }
+        remotePicker.value = remotePicker.value.copy(visible=true, share=value.share, path=normalized, loading=true, error=null)
         withPickerCredential(value, password) { config, credential -> NetworkFolderPickerPolicy.folders(smb.list(config.copy(share=value.share), credential, normalized)) }
-            .onSuccess { remotePicker.value = remotePicker.value.copy(folders=it, loading=false) }.onFailure { remotePicker.value = remotePicker.value.copy(error=safePickerError(it), loading=false) }
+            .onSuccess { remotePicker.value = remotePicker.value.copy(folders=it, loading=false) }
+            .onFailure { remotePicker.value = remotePicker.value.copy(error=safePickerError(it), loading=false) }
     }
     fun usePickerFolder() { val picker=remotePicker.value; val selection=NetworkFolderPickerPolicy.selection(requireNotNull(picker.share), picker.path); editor.value=editor.value.copy(share=selection.share, basePath=selection.basePath); closeRemotePicker() }
     private suspend fun <T> withPickerCredential(value: ConnectionEditorState, password: String, block: suspend (ConnectionConfig, Credential)->T): Result<T> {
