@@ -1,6 +1,10 @@
 package dev.networkstorage.data.smb
 
 import com.hierynomus.msfscc.FileAttributes
+import com.hierynomus.msdtyp.AccessMask
+import com.hierynomus.mssmb2.SMB2CreateDisposition
+import com.hierynomus.mssmb2.SMB2CreateOptions
+import com.hierynomus.mssmb2.SMB2ShareAccess
 import com.hierynomus.protocol.commons.EnumWithValue.EnumUtils
 import com.hierynomus.smbj.SMBClient
 import com.hierynomus.smbj.auth.AuthenticationContext
@@ -17,10 +21,42 @@ import kotlinx.coroutines.withContext
 import java.net.ConnectException
 import java.net.UnknownHostException
 import java.util.concurrent.TimeoutException
+import java.util.EnumSet
 import javax.inject.Inject
 import kotlin.coroutines.coroutineContext
 
 class SmbjClient @Inject constructor() : SmbClient {
+    override suspend fun listShares(connection: ConnectionConfig, credential: Credential): List<String> = withContext(Dispatchers.IO) {
+        try {
+            SMBClient().use { client ->
+                client.connect(connection.host, connection.port).use { transport ->
+                    transport.authenticate(AuthenticationContext(connection.username, credential.password, connection.domain)).use { session ->
+                        session.listShares().map { it.netName }.filterNot { it.endsWith("$") }.sortedWith(String.CASE_INSENSITIVE_ORDER)
+                    }
+                }
+            }
+        } catch (error: Throwable) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            throw SmbFailure(mapError(error), error)
+        } finally { credential.password.fill('\u0000') }
+    }
+    override suspend fun openRead(connection: ConnectionConfig, credential: Credential, relativePath: String): RemoteReadHandle = withContext(Dispatchers.IO) {
+        val path = listOf(RemotePath.normalize(connection.basePath), RemotePath.normalize(relativePath)).filter { it.isNotBlank() }.joinToString("\\")
+        try {
+            val client = SMBClient()
+            val transport = client.connect(connection.host, connection.port)
+            val session = transport.authenticate(AuthenticationContext(connection.username, credential.password, connection.domain))
+            val share = session.connectShare(connection.share) as DiskShare
+            val file = share.openFile(path, EnumSet.of(AccessMask.GENERIC_READ), EnumSet.noneOf(FileAttributes::class.java), SMB2ShareAccess.ALL, SMB2CreateDisposition.FILE_OPEN, EnumSet.noneOf(SMB2CreateOptions::class.java))
+            object : RemoteReadHandle {
+                override val input = file.inputStream
+                override fun close() { file.close(); share.close(); session.close(); transport.close(); client.close() }
+            }
+        } catch (error: Throwable) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            throw SmbFailure(mapError(error), error)
+        } finally { credential.password.fill('\u0000') }
+    }
     override suspend fun list(connection: ConnectionConfig, credential: Credential, relativeDirectory: String): List<RemoteEntry> = withContext(Dispatchers.IO) {
         val relative = RemotePath.normalize(relativeDirectory)
         val root = RemotePath.normalize(connection.basePath)

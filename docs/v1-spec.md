@@ -17,7 +17,7 @@ The three modes are distinct:
 - A connection has an ID, display name, host, port, share, root-relative base path, username, protected password, and optional domain.
 - Passwords are encrypted with an Android Keystore key, kept outside Room, never logged, and never shown again.
 
-## Current delivery: Steps 0–3
+## Current delivery: Steps 0–4
 
 This delivery contains one Android app module using Kotlin, Compose, Hilt, Room, WorkManager, coroutines, and SMBJ.
 
@@ -27,16 +27,18 @@ Each scan has a durable run record and progress. Existing entries are never clea
 
 The indexed browser pages only the selected `connectionId` and `parentPath` from Room, sorts folders before names, supports hierarchical/back/root navigation, and never contacts SMB. Connection and root-index deletion remove only local records and protected credentials after confirmation. DataStore persists an On-demand-only cache limit as `Long` bytes, defaulting to 10 GiB; mirror data is excluded.
 
+Step 4 adds remote folder selection during connection setup, separate persisted SAF trees for Cache and future Mirror data, and a serialized WorkManager on-demand queue. Downloads use read-only SMB handles and bounded copy into `.part` documents, verify the full `Long` size, then promote and record Cache-only metadata. Valid cache is reused offline; size/mtime changes produce `REMOTE_UPDATED`. Completed document URIs open through `ACTION_VIEW` with read permission only. Cache limits warn but do not evict.
+
+Step 4.1 refines presentation without changing those contracts. Connections is a scan-focused list with a separate Add/Edit screen. Host/port and username/password are paired, saved passwords are never revealed, and users select one Network folder from read-only share/folder listing while the database retains separate `share` and `basePath`. Browser rows expose only folder navigation or cache icon, name, and file size.
+
 ## Later steps (not in the current delivery)
 
-4. Complete on-demand download via a bounded buffer and `.part` file.
-5. Read-only content URI and `ACTION_VIEW` external open.
 6. One-way mirror into shared storage; no deletion propagation.
 7. Configurable on-demand-only LRU; mirror exclusion and future pin support.
 8. Connected-network periodic mirror work and foreground handling for long work.
 9. Polish and acceptance testing.
 
-No file download, mirror data copy, cache/LRU enforcement, FileProvider, `ACTION_VIEW`, periodic sync, VPN integration, thumbnailing, or streaming is part of Steps 0–3.
+No mirror data copy, automatic cache eviction/LRU, periodic sync, VPN integration, thumbnailing, or streaming is part of Steps 0–4.
 
 ## Security and errors
 

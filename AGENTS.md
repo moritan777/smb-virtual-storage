@@ -21,3 +21,4 @@ Build the non-root Android app specified by `docs/v1-spec.md`. It indexes a user
 - Add tests for new pure logic and boundary behavior. Keep SMB behind `SmbClient` so fakes can test listing, failures, cancellation, and timeouts.
 - A scan must not delete the prior index before starting. Mark unseen entries missing only after a completely successful scan.
 - Do not perform unrelated refactors. Run unit tests, relevant Android tests where an emulator exists, builds, lint where practical, `git diff --check`, and `git status`.
+- Codex must not generate, modify, add, or commit binary files. Gradle Wrapper files (especially `gradle-wrapper.jar`) are human-managed and must not be touched by Codex.

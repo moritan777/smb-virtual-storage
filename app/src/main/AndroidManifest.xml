@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <application android:name=".NetworkStorageApp" android:allowBackup="false" android:label="Network Storage" android:theme="@style/Theme.NetworkStorage" android:usesCleartextTraffic="false">
         <provider
             android:name="androidx.startup.InitializationProvider"
@@ -12,6 +14,10 @@
                 android:value="androidx.startup"
                 tools:node="remove" />
         </provider>
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
