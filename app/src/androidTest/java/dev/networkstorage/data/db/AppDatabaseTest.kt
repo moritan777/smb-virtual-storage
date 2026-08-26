@@ -1,24 +1,24 @@
 package dev.networkstorage.data.db
 
 import android.content.Context
-import androidx.room.Room
+import android.content.Intent
+import android.net.Uri
 import androidx.paging.PagingSource
+import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import dev.networkstorage.domain.FolderMode
-import dev.networkstorage.domain.ScanStatus
 import dev.networkstorage.data.IndexRepository
 import dev.networkstorage.data.credential.CredentialStore
 import dev.networkstorage.data.settings.SettingsRepository
 import dev.networkstorage.data.settings.StorageRootKind
-import dev.networkstorage.data.smb.SmbClient
 import dev.networkstorage.data.smb.RemoteReadHandle
+import dev.networkstorage.data.smb.SmbClient
 import dev.networkstorage.domain.ConnectionConfig
 import dev.networkstorage.domain.Credential
+import dev.networkstorage.domain.FolderMode
 import dev.networkstorage.domain.RemoteEntry
+import dev.networkstorage.domain.ScanStatus
 import dev.networkstorage.presentation.ExternalOpenService
-import android.content.Intent
-import android.net.Uri
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertFalse
@@ -28,7 +28,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AppDatabaseTest {
-    @Test fun successfulScanMarksOnlyUnseenEntriesMissing() = runBlocking {
+    @Test fun successfulScanDeletesUnseenEntries() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), AppDatabase::class.java).build()
         val dao = db.dao()
         dao.saveConnection(ConnectionEntity("c", "NAS", "host", 445, "share", "", "user", null, FolderMode.INDEX_ONLY, 1))
@@ -37,8 +37,8 @@ class AppDatabaseTest {
         dao.upsertEntry(IndexedEntryEntity("c", "new", "", "new", false, 0, 0, null, FolderMode.INDEX_ONLY, true, 2, "new"))
         dao.completeScan("c", "new", 1, 3)
         val entries = dao.entriesForTest("c")
-        assertFalse(entries.single { it.name == "old" }.remoteExists)
-        assertTrue(entries.single { it.name == "new" }.remoteExists)
+        assertTrue(entries.none { it.name == "old" })
+        assertTrue(entries.single().name == "new")
         db.close()
     }
 
@@ -99,7 +99,6 @@ class AppDatabaseTest {
             override fun remove(connectionId: String) { credentialRemoved = connectionId == "c" }
         }
         val readOnlySmb = object : SmbClient {
-            override suspend fun listShares(connection: ConnectionConfig, credential: Credential): List<String> = error("SMB must not be contacted by local deletion")
             override suspend fun list(connection: ConnectionConfig, credential: Credential, relativeDirectory: String): List<RemoteEntry> = error("SMB must not be contacted by local deletion")
             override suspend fun openRead(connection: ConnectionConfig, credential: Credential, relativePath: String): RemoteReadHandle = error("SMB must not be contacted by local deletion")
         }
@@ -120,7 +119,6 @@ class AppDatabaseTest {
             override fun remove(connectionId: String) = Unit
         }
         val readOnly = object : SmbClient {
-            override suspend fun listShares(connection: ConnectionConfig, credential: Credential) = emptyList<String>()
             override suspend fun list(connection: ConnectionConfig, credential: Credential, relativeDirectory: String) = emptyList<RemoteEntry>()
             override suspend fun openRead(connection: ConnectionConfig, credential: Credential, relativePath: String): RemoteReadHandle = error("not used")
         }
