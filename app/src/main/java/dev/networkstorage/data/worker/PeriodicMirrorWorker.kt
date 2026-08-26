@@ -29,10 +29,10 @@ class PeriodicMirrorWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         if (settings.mirrorRootUri.first() == null) return Result.success(summary(0, 0, 0L))
 
+        var completedFiles = 0
+        var copiedBytes = 0L
         return try {
             var completedConnections = 0
-            var completedFiles = 0
-            var copiedBytes = 0L
 
             dao.mirrorConnections().forEach { connection ->
                 setProgress(
@@ -83,10 +83,12 @@ class PeriodicMirrorWorker @AssistedInject constructor(
                 completedConnections += 1
             }
 
+            settings.recordAutomaticMirrorSync(SettingsRepository.AUTOMATIC_SYNC_STATUS_SUCCESS, completedFiles, copiedBytes)
             Result.success(summary(completedConnections, completedFiles, copiedBytes))
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
+            settings.recordAutomaticMirrorSync(SettingsRepository.AUTOMATIC_SYNC_STATUS_RETRYING, completedFiles, copiedBytes)
             // Network loss and temporarily unreachable NAS devices are retryable.
             Result.retry()
         }
