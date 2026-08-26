@@ -9,6 +9,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import dev.networkstorage.data.mirror.MirrorDiffState
 import dev.networkstorage.data.mirror.MirrorRepository
+import dev.networkstorage.domain.UserFacingError
 
 @HiltWorker
 class MirrorWorker @AssistedInject constructor(
@@ -17,7 +18,8 @@ class MirrorWorker @AssistedInject constructor(
     private val mirrorRepository: MirrorRepository,
 ) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result {
-        val connectionId = inputData.getString(KEY_CONNECTION_ID) ?: return Result.failure(error("INVALID_CONNECTION"))
+        val connectionId = inputData.getString(KEY_CONNECTION_ID)
+            ?: return Result.failure(error(UserFacingError.UNKNOWN))
         val requestedPath = inputData.getString(KEY_PATH)
         setForeground(MirrorForeground.info(applicationContext, "Mirror sync", "Preparing Mirror files…"))
         return try {
@@ -60,11 +62,14 @@ class MirrorWorker @AssistedInject constructor(
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (error: Throwable) {
-            Result.failure(error(error.message ?: "MIRROR_COPY_FAILED"))
+            Result.failure(error(UserFacingError.code(error)))
         }
     }
 
-    private fun error(value: String) = Data.Builder().putString(KEY_ERROR, value).build()
+    private fun error(code: String) = Data.Builder()
+        .putString(KEY_ERROR_CODE, code)
+        .putString(KEY_ERROR, UserFacingError.message(code))
+        .build()
 
     companion object {
         const val KEY_CONNECTION_ID = "connection_id"
@@ -76,5 +81,6 @@ class MirrorWorker @AssistedInject constructor(
         const val KEY_TOTAL_FILES = "total_files"
         const val KEY_COPIED_BYTES = "copied_bytes"
         const val KEY_ERROR = "error"
+        const val KEY_ERROR_CODE = "error_code"
     }
 }
