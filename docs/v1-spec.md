@@ -29,6 +29,8 @@ The indexed browser pages only the selected `connectionId` and `parentPath` from
 
 Step 4 adds remote folder selection during connection setup, separate persisted SAF trees for Cache and future Mirror data, and a serialized WorkManager on-demand queue. Downloads use read-only SMB handles and bounded copy into `.part` documents, verify the full `Long` size, then promote and record Cache-only metadata. Valid cache is reused offline; size/mtime changes produce `REMOTE_UPDATED`. Completed document URIs open through `ACTION_VIEW` with read permission only. Cache limits warn but do not evict.
 
+Step 4.1 refines presentation without changing those contracts. Connections is a scan-focused list with a separate Add/Edit screen. Host/port and username/password are paired, saved passwords are never revealed, and users select one Network folder from read-only share/folder listing while the database retains separate `share` and `basePath`. Browser rows expose only folder navigation or cache icon, name, and file size.
+
 ## Later steps (not in the current delivery)
 
 6. One-way mirror into shared storage; no deletion propagation.

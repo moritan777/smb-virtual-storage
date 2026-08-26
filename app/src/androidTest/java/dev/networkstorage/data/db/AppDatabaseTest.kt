@@ -99,12 +99,37 @@ class AppDatabaseTest {
             override fun remove(connectionId: String) { credentialRemoved = connectionId == "c" }
         }
         val readOnlySmb = object : SmbClient {
+            override suspend fun listShares(connection: ConnectionConfig, credential: Credential): List<String> = error("SMB must not be contacted by local deletion")
             override suspend fun list(connection: ConnectionConfig, credential: Credential, relativeDirectory: String): List<RemoteEntry> = error("SMB must not be contacted by local deletion")
             override suspend fun openRead(connection: ConnectionConfig, credential: Credential, relativePath: String): RemoteReadHandle = error("SMB must not be contacted by local deletion")
         }
         IndexRepository(dao, credentials, readOnlySmb).deleteConnection("c")
         assertTrue(credentialRemoved)
         assertTrue(dao.connection("c") == null)
+        db.close()
+    }
+
+    @Test fun connectionEditKeepsBlankPasswordAndReplacesOnlyExplicitPassword() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), AppDatabase::class.java).build()
+        val dao = db.dao()
+        dao.saveConnection(ConnectionEntity("c", "Old", "host", 445, "share", "", "user", null, FolderMode.INDEX_ONLY, 1))
+        var stored = "original"
+        val credentialStore = object : CredentialStore {
+            override fun put(connectionId: String, password: CharArray) { stored = String(password) }
+            override fun get(connectionId: String) = Credential(stored.toCharArray())
+            override fun remove(connectionId: String) = Unit
+        }
+        val readOnly = object : SmbClient {
+            override suspend fun listShares(connection: ConnectionConfig, credential: Credential) = emptyList<String>()
+            override suspend fun list(connection: ConnectionConfig, credential: Credential, relativeDirectory: String) = emptyList<RemoteEntry>()
+            override suspend fun openRead(connection: ConnectionConfig, credential: Credential, relativePath: String): RemoteReadHandle = error("not used")
+        }
+        val repository = IndexRepository(dao, credentialStore, readOnly)
+        repository.updateConnection("c", "New", "host", 445, "share", "folder", "user", null, null, FolderMode.ON_DEMAND)
+        assertTrue(stored == "original")
+        repository.updateConnection("c", "New", "host", 445, "share", "folder", "user", "replacement".toCharArray(), null, FolderMode.ON_DEMAND)
+        assertTrue(stored == "replacement")
+        assertTrue(dao.connection("c")?.name == "New")
         db.close()
     }
 

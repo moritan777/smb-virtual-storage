@@ -26,6 +26,20 @@ import javax.inject.Inject
 import kotlin.coroutines.coroutineContext
 
 class SmbjClient @Inject constructor() : SmbClient {
+    override suspend fun listShares(connection: ConnectionConfig, credential: Credential): List<String> = withContext(Dispatchers.IO) {
+        try {
+            SMBClient().use { client ->
+                client.connect(connection.host, connection.port).use { transport ->
+                    transport.authenticate(AuthenticationContext(connection.username, credential.password, connection.domain)).use { session ->
+                        session.listShares().map { it.netName }.filterNot { it.endsWith("$") }.sortedWith(String.CASE_INSENSITIVE_ORDER)
+                    }
+                }
+            }
+        } catch (error: Throwable) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            throw SmbFailure(mapError(error), error)
+        } finally { credential.password.fill('\u0000') }
+    }
     override suspend fun openRead(connection: ConnectionConfig, credential: Credential, relativePath: String): RemoteReadHandle = withContext(Dispatchers.IO) {
         val path = listOf(RemotePath.normalize(connection.basePath), RemotePath.normalize(relativePath)).filter { it.isNotBlank() }.joinToString("\\")
         try {
