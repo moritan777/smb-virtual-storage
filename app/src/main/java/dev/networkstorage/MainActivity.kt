@@ -227,7 +227,34 @@ private fun SettingsScreen(viewModel: MainViewModel) {
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = ScreenPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Spacer(Modifier.height(8.dp)); Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold); Text("Cache and mirror storage", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item { SettingsSectionCard("☁ On-demand cache") { Text("Storage folder", style = MaterialTheme.typography.labelMedium); StoragePathBox(cacheRoot); OutlinedButton(onClick = { cachePicker.launch(null) }, modifier = Modifier.fillMaxWidth()) { Text("▱ Choose folder") }; Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Cache limit", fontWeight = FontWeight.Medium); Text("${bytes / SettingsRepository.BYTES_PER_GIB} GB", color = MaterialTheme.colorScheme.primary) }; Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) { SettingsRepository.PRESET_GIB.forEach { gib -> val modifier = Modifier.weight(1f); if (bytes == gib * SettingsRepository.BYTES_PER_GIB) FilledTonalButton(onClick = { viewModel.setCacheLimitGib(gib.toString()) }, modifier = modifier) { Text("$gib GB") } else OutlinedButton(onClick = { viewModel.setCacheLimitGib(gib.toString()) }, modifier = modifier) { Text("$gib GB") } } }; OutlinedTextField(custom, { custom = it }, label = { Text("Custom limit") }, suffix = { Text("GB") }, modifier = Modifier.fillMaxWidth(), singleLine = true); Button(onClick = { viewModel.setCacheLimitGib(custom) }, modifier = Modifier.fillMaxWidth()) { Text("Save custom limit") }; Text("Usage ${formatBytes(usage)} / ${formatBytes(bytes)}", style = MaterialTheme.typography.bodySmall); LinearProgressIndicator(progress = { usageRatio(usage, bytes) }, modifier = Modifier.fillMaxWidth()); OutlinedButton(onClick = { confirmClearCache = true }, enabled = usage > 0, modifier = Modifier.fillMaxWidth()) { Text("Clear all On-demand cache") } } }
-        item { SettingsSectionCard("▣ Mirror") { Text("Storage folder", style = MaterialTheme.typography.labelMedium); StoragePathBox(mirrorRoot); OutlinedButton(onClick = { mirrorPicker.launch(null) }, modifier = Modifier.fillMaxWidth()) { Text("▱ Choose folder") }; Text("Mirror files are persistent and are not removed by cache cleanup.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant); HorizontalDivider(); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Column { Text("Automatic sync", fontWeight = FontWeight.Medium); Text("Runs only while a network is connected and battery is not low.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }; if (automaticSyncEnabled) FilledTonalButton(onClick = { viewModel.setAutomaticMirrorSyncEnabled(false) }) { Text("On") } else OutlinedButton(onClick = { viewModel.setAutomaticMirrorSyncEnabled(true) }, enabled = mirrorRoot != null) { Text("Off") } }; if (automaticSyncEnabled) { Text("Sync interval", style = MaterialTheme.typography.labelMedium); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) { SettingsRepository.AUTOMATIC_MIRROR_SYNC_INTERVAL_OPTIONS_MINUTES.forEach { minutes -> val label = automaticSyncIntervalLabel(minutes); val modifier = Modifier.weight(1f); if (automaticSyncInterval == minutes) FilledTonalButton(onClick = { viewModel.setAutomaticMirrorSyncIntervalMinutes(minutes) }, modifier = modifier) { Text(label) } else OutlinedButton(onClick = { viewModel.setAutomaticMirrorSyncIntervalMinutes(minutes) }, modifier = modifier) { Text(label) } } }; Text("Automatic sync refreshes the NAS index first, then copies NAS-only and NAS-newer files to Mirror storage. Local Mirror files are not deleted.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
+        item {
+            SettingsSectionCard("▣ Mirror") {
+                Text("Storage folder", style = MaterialTheme.typography.labelMedium)
+                StoragePathBox(mirrorRoot)
+                OutlinedButton(onClick = { mirrorPicker.launch(null) }, modifier = Modifier.fillMaxWidth()) { Text("▱ Choose folder") }
+                Text("Mirror files are persistent and are not removed by cache cleanup.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                HorizontalDivider()
+                Text("Automatic sync", fontWeight = FontWeight.Medium)
+                Text("Runs only while a network is connected and battery is not low.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (automaticSyncEnabled) {
+                    FilledTonalButton(onClick = { viewModel.setAutomaticMirrorSyncEnabled(false) }, modifier = Modifier.fillMaxWidth()) { Text("Automatic sync: On") }
+                } else {
+                    OutlinedButton(onClick = { viewModel.setAutomaticMirrorSyncEnabled(true) }, enabled = mirrorRoot != null, modifier = Modifier.fillMaxWidth()) { Text("Automatic sync: Off") }
+                }
+                if (automaticSyncEnabled) {
+                    Text("Sync interval", style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        SettingsRepository.AUTOMATIC_MIRROR_SYNC_INTERVAL_OPTIONS_MINUTES.forEach { minutes ->
+                            val label = automaticSyncIntervalLabel(minutes)
+                            val modifier = Modifier.weight(1f)
+                            if (automaticSyncInterval == minutes) FilledTonalButton(onClick = { viewModel.setAutomaticMirrorSyncIntervalMinutes(minutes) }, modifier = modifier) { Text(label) }
+                            else OutlinedButton(onClick = { viewModel.setAutomaticMirrorSyncIntervalMinutes(minutes) }, modifier = modifier) { Text(label) }
+                        }
+                    }
+                    Text("Automatic sync refreshes the NAS index first, then copies NAS-only and NAS-newer files to Mirror storage. Local Mirror files are not deleted.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
     }
     if (confirmClearCache) AlertDialog(onDismissRequest = { confirmClearCache = false }, title = { Text("Clear On-demand cache?") }, text = { Text("Downloaded cache copies will be removed. NAS and Mirror files will not be changed.") }, dismissButton = { TextButton(onClick = { confirmClearCache = false }) { Text("Cancel") } }, confirmButton = { TextButton(onClick = { confirmClearCache = false; viewModel.clearCache() }) { Text("Clear cache") } })
 }
