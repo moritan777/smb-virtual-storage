@@ -12,6 +12,20 @@ class MirrorDiffPolicyTest {
         assertEquals(MirrorDiffState.LOCAL_NEWER, MirrorDiffPolicy.classify(10, 1000, 11, 5000))
     }
 
+    @Test fun nasDeletionLeavesExistingMirrorAsLocalOnly() {
+        assertEquals(
+            MirrorDiffState.LOCAL_ONLY,
+            MirrorDiffPolicy.classify(null, null, 13L * 1024 * 1024, 123456),
+        )
+    }
+
+    @Test fun staleIndexStillRecognizesMatchingLocalMirrorForOfflineOpen() {
+        assertEquals(
+            MirrorDiffState.SAME,
+            MirrorDiffPolicy.classify(4096, 1000, 4096, 2500),
+        )
+    }
+
     @Test fun unknownTimestampUsesEqualSizeAsSame() {
         assertEquals(MirrorDiffState.SAME, MirrorDiffPolicy.classify(123, 0, 123, 9999))
     }
