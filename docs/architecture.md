@@ -1,5 +1,7 @@
 # Architecture
 
+**English** | [日本語](architecture.ja.md)
+
 Network Storage is a single-module, non-root Android application. It indexes a configured SMB subtree and manages complete local files; it does not mount a filesystem or expose a `DocumentsProvider`.
 
 ## Boundaries
