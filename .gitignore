@@ -4,3 +4,21 @@ local.properties
 **/build/
 *.iml
 captures/
+
+# Signing keys and local secrets
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+*.p12
+*.pfx
+.env
+.env.*
+google-services.json
+
+# OS and additional generated files
+.DS_Store
+Thumbs.db
+.kotlin/
+externalNativeBuild/
+.cxx/

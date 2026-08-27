@@ -1,25 +1,32 @@
-# Steps 0–2 architecture
+# Architecture
 
-The single `app` module uses a small presentation/domain/data split. Compose and `MainViewModel` render connection registration, WorkManager progress/cancellation, and a bounded Room preview. `IndexRepository` owns the recursive breadth-first scan. Room owns connection metadata, root rules, indexed entries, and durable scan runs.
+Network Storage is a single-module, non-root Android application. It indexes a configured SMB subtree and manages complete local files; it does not mount a filesystem or expose a `DocumentsProvider`.
 
-`SmbClient` is deliberately read-only and exposes only directory listing. `SmbjClient` selects SMBJ because it is SMB2/3-only, mature, and provides the metadata needed here; jcifs-ng remains a possible later replacement behind the interface rather than a second V1 backend. Network work runs on IO and WorkManager provides process-resilient scheduling and cancellation.
+## Boundaries
 
-Passwords are AES-GCM encrypted with a non-exportable Android Keystore key and stored separately from Room. Remote paths are normalized at configuration and listing boundaries. A scan tags each observation with its run ID, incrementally upserts it, and marks unseen rows missing only in the same transaction that completes a successful run.
+The presentation layer uses Compose and `MainViewModel` for connection editing, indexed browsing, settings, and worker status. Room stores connection metadata, folder rules, indexed entries, cache metadata, and durable scan runs. `IndexRepository` owns breadth-first scans and reconciles unseen rows only after a fully successful scan.
 
-Mirror synchronization and automatic cache eviction remain intentionally absent until their specified phases.
+SMB access stays behind the read-only `SmbClient` interface. `SmbjClient` provides SMB2/3 listing and bounded read handles; no remote mutation API exists. Passwords are AES-GCM encrypted with a non-exportable Android Keystore key and remain separate from Room. Connection-root-relative paths are normalized at configuration, listing, and local-storage boundaries.
 
-## Step 3 browser and settings
+## Index and browser
 
-Room exposes a `PagingSource` scoped to one connection and one parent path, so navigation never materializes or filters the complete index and never calls SMB. `MainViewModel` owns the selected connection, current relative path, screen, and cached paging stream. Compose consumes it through paging-compose.
+Room exposes a connection- and parent-scoped `PagingSource`, so browsing reads the local index rather than contacting SMB or filtering the entire index in memory. A failed, cancelled, or offline scan retains the prior index. Only completion of a successful scan reconciles NAS-deleted entries.
 
-Connection deletion is a local Room cascade followed by credential cleanup; root-index deletion transactionally removes the root rule, entries, and scan history while retaining the connection. Neither path crosses the read-only `SmbClient` boundary. `SettingsRepository` is the future cache/LRU contract and persists a single `Long` byte limit in Preferences DataStore, independently of UI and mirror storage.
+Connection deletion cascades local metadata and removes the stored credential. Root-index deletion retains the connection. Neither operation crosses the read-only SMB boundary.
 
-## Step 4 cache and external open
+## Settings and local storage
 
-`SmbClient.openRead` is the only new protocol capability. A unique WorkManager chain serializes downloads. `CacheRepository` maps normalized paths beneath a connection-ID directory in the selected SAF tree, copies with a 64 KiB buffer into `.part`, validates size, promotes, and only then commits `CacheEntryEntity`. Cancellation/failure removes partial data and preserves an older completed cache where present.
+`SettingsRepository` is the implemented Preferences DataStore owner for the `Long` cache limit, separate Cache and Mirror SAF tree URIs, automatic Mirror settings, and last-run status. Equal or nested Cache/Mirror trees are rejected when provider document IDs can be compared.
 
-Cache and Mirror tree URIs are separate DataStore values; equal/nested document IDs are rejected where the provider exposes comparable IDs. Mirror synchronization remains absent. Valid cached document URIs are touched for future LRU and opened with MIME-specific `ACTION_VIEW` plus read-only permission.
+ON_DEMAND and MIRROR have deliberately separate lifecycles:
 
-## Step 4.1 presentation
+- **ON_DEMAND:** `CacheRepository` downloads a complete file to `.part` with bounded copying, validates its size, promotes it, then commits cache metadata. Valid entries are touched on access. Cache cleanup evicts least-recently-used on-demand entries as needed to respect the configured limit.
+- **MIRROR:** `MirrorRepository` compares indexed NAS metadata with retained device files and copies only NAS-only or NAS-newer content. Mirror files are excluded from cache cleanup. Local-only files are retained and local-newer files are not automatically overwritten.
 
-Screen state explicitly separates Connections, Connection Editor, Browser, and Settings. The editor never reads a saved password into UI state: an empty edit preserves the credential and an explicit replacement updates it. The Network folder picker uses read-only share/directory listing and maps the selected share root or nested relative path back to the existing `share`/`basePath` model. Browser presentation reduces each row to folder navigation or cache icon, name, and file size while retaining the Room paging source.
+Completed local files are opened using MIME-specific `ACTION_VIEW` intents with read-only URI permission. A valid completed Mirror file remains openable offline; valid on-demand cache entries can also be reused without a new network transfer.
+
+## Mirror synchronization
+
+Manual Mirror sync and optional automatic Mirror sync use the same conservative NAS → Device policy. Upload, bidirectional synchronization, and resume are absent. Transfers restart at byte zero after interruption, use temporary `.part` files, validate size, and clean partial data on failure or cancellation.
+
+Automatic sync is unique periodic WorkManager work with connected-network and battery-not-low constraints. `SettingsRepository` persists enablement, interval, and last-run outcome; scheduling is restored on application startup. WorkManager intervals are minimum intervals, not exact wall-clock schedules.

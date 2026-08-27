@@ -1,70 +1,66 @@
 # Network Storage
 
-Network Storage is a non-root Android app for browsing selected SMB2/SMB3 NAS folders through a local metadata index. It is **not** an Android filesystem mount or microSD replacement.
+**Status: Public Beta / v0.1.0**
 
-The current UI exposes two storage modes:
+Network Storage is a non-root Android 10+ app that indexes a user-selected SMB2/SMB3 NAS subtree and opens complete files from local device storage. It is **not** an Android filesystem mount, does not expose the NAS to Android as a mounted drive, and is not a microSD replacement.
 
-- **On-demand** — scan NAS metadata, browse the local index, download a complete file when it is opened, and keep it in an evictable local cache.
-- **Mirror** — retain complete local copies for offline use. Manual and optional periodic sync copy NAS-only or NAS-newer files to the device. Local-only and local-newer mirror files are not automatically deleted or overwritten.
+## What it does
 
-Network Storage does not currently upload local files back to the NAS.
+- **ON_DEMAND** — scans NAS metadata, downloads a complete file when opened, and keeps it in an evictable local cache. On-demand cache entries are subject to LRU cleanup when the configured cache limit is exceeded.
+- **MIRROR** — retains complete local copies for offline use. Manual sync and optional WorkManager periodic sync copy files **one way, NAS → Device**. Mirror files are retained data and are excluded from cache cleanup.
+- Browses a Room-backed local index and opens completed local files through read-only Android content URIs.
+- Uses SMB2/SMB3. **SMB1 is not supported.** Remote SMB access is read-only.
 
-## Implemented features
+Upload and bidirectional sync are not implemented. Transfer resume is not implemented; an interrupted transfer restarts from the beginning. Mirror sync does not automatically delete local-only files or overwrite local-newer files.
 
-- SMB2/SMB3 connection registration with protected credentials.
-- Network folder picker and compact connection/browser UI.
-- Room-backed metadata index and indexed browsing.
-- Safe scan reconciliation: an unreachable NAS does not turn a failed scan into remote deletions.
-- On-demand complete-file downloads through a user-selected SAF cache tree.
-- Cache size limit and eviction of removable cached files.
-- Read-only external opening through Android content URIs.
-- Mirror comparison and one-way NAS-to-device synchronization.
-- Offline opening of current mirrored files.
-- Optional automatic Mirror sync with configurable interval and last-run status.
-- Foreground execution for long downloads/synchronization.
-- Shared user-facing error classification for scan, download, and Mirror operations.
+## Offline behavior
 
-## Data safety
+An offline or failed scan preserves the prior index instead of treating the NAS contents as deleted. Valid completed Mirror files can be opened offline. Files that have not been downloaded in ON_DEMAND mode cannot be fetched while offline; an already valid local on-demand cache entry can still be opened.
 
-On-demand Cache and Mirror use separate user-selected SAF trees.
+## Getting started
 
-Downloads and Mirror copies are written to temporary `.part` files first. A file is promoted to its final name only after the copy completes and its size matches the indexed NAS metadata. Interrupted copies are discarded rather than exposed as complete files.
+1. In **Settings**, select separate Android Storage Access Framework folders for on-demand Cache and Mirror data, and optionally set the cache limit.
+2. Add a connection with the NAS host, SMB share/base folder, username, and password; choose **ON_DEMAND** or **MIRROR**.
+3. Run a scan, then browse the indexed folders.
+4. In ON_DEMAND mode, open a file to download it completely and launch an installed viewer.
+5. In MIRROR mode, run manual sync, or enable automatic sync and choose its periodic interval; open completed Mirror files online or offline.
 
-A successful scan may remove NAS-deleted entries from the metadata index. A failed or offline scan does not perform that reconciliation. Mirror storage is intentionally retained: if a NAS file disappears, an existing device-side Mirror copy becomes local-only and is not automatically deleted.
+Credentials are protected with Android Keystore and are not shown again after saving.
 
-Automatic Mirror sync only downloads `REMOTE_ONLY` and `REMOTE_NEWER` items. It does not automatically overwrite `LOCAL_NEWER` files.
+## Build prerequisites
 
-## Automatic Mirror sync
+- JDK 17
+- Android SDK with compileSdk 35 (targetSdk 35; minSdk 29 / Android 10)
+- Windows PowerShell or Command Prompt for the wrapper commands below
+- An emulator or Android 10+ device for installation and instrumentation tests
 
-Automatic sync is optional and uses Android WorkManager. The configured interval is restored when the app process starts. Work runs only when its Android constraints are satisfied and records the latest outcome in Settings.
+The repository currently includes `gradlew.bat` for Windows. A standard Unix `gradlew` wrapper script is **not currently included**, so Linux/macOS builds require a separately installed compatible Gradle or a future human-managed wrapper update. Do not regenerate wrapper files as part of ordinary application changes.
 
-Periodic scheduling is controlled by Android/WorkManager, so the selected interval is a minimum scheduling interval rather than an exact wall-clock execution guarantee.
+### Windows: build and install a debug APK
 
-## Acceptance coverage
-
-Unit tests cover cache boundaries, complete-file copy validation, interrupted-download failure, stable user-facing network errors, Mirror diff direction, and protection of local-only/local-newer Mirror files.
-
-Manual NAS acceptance testing has also covered:
-
-- cache eviction after exceeding the configured limit;
-- offline scan without destructive reconciliation;
-- Mirror open while online and offline;
-- automatic Mirror synchronization of a NAS-side change;
-- interrupted Mirror transfer followed by a clean restart from the beginning.
-
-Resume of a partially transferred SMB file is not implemented; interrupted transfers restart from byte zero.
-
-## Build
-
-Use JDK 17 and an Android SDK compatible with the project, then run from the repository root:
+From the repository root:
 
 ```powershell
 .\gradlew.bat testDebugUnitTest
+.\gradlew.bat lintDebug
 .\gradlew.bat assembleDebug
 ```
 
-For an attached emulator/device:
+The debug APK is written under `app\build\outputs\apk\debug\`. With an emulator/device attached, install it with:
 
 ```powershell
 .\gradlew.bat installDebug
 ```
+
+## Known limitations
+
+- Public Beta; only the current `main` / v0.1.x line is supported.
+- No SMB1, upload, remote mutation, bidirectional sync, streaming, partial-file open, or transfer resume.
+- This is an app-local index/cache/mirror, not a system-wide mount or storage-volume replacement.
+- Periodic Mirror sync timing is controlled by Android WorkManager and is not an exact schedule.
+- Mirror conflict handling is conservative: local-only and local-newer files require user management and are not automatically deleted.
+- Real-device behavior depends on the chosen document provider, available local storage, network stability, and an installed viewer for the file type.
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
