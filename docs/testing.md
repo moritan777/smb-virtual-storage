@@ -1,5 +1,7 @@
 # Testing strategy
 
+**English** | [日本語](testing.ja.md)
+
 ## Automated coverage
 
 Pure JVM tests cover remote-path normalization and traversal rejection, root-mode inheritance, update detection, `Long` byte accounting, settings validation, cache freshness and overflow-safe limits, bounded copy and size mismatch, user-facing network error mapping, Mirror comparison direction, and protection of local-only/local-newer files. The SMB boundary is injectable so fakes exercise listing, read failures, cancellation, and timeouts without real credentials.
