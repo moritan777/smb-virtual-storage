@@ -2,6 +2,8 @@
 
 [English](README.md) | **日本語**
 
+<img width="1536" height="1024" alt="Network Storage screenshots" src="https://github.com/user-attachments/assets/fbcfbda1-51e1-4fe6-bfed-d1ee2592c7b5" />
+
 **ステータス: Public Beta / v0.1.0**
 
 Network Storage は、ユーザーが指定した SMB2/SMB3 NAS のサブツリーをインデックス化し、ファイル全体を端末のローカルストレージへ取得して開く、root 権限不要の Android 10+ 向けアプリです。Android のファイルシステムとしてマウントするアプリではなく、NAS をマウント済みドライブとして Android に公開するものでも、microSD の代替でもありません。
