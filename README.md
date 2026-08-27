@@ -1,5 +1,7 @@
 # Network Storage
 
+**English** | [日本語](README.ja.md)
+
 **Status: Public Beta / v0.1.0**
 
 Network Storage is a non-root Android 10+ app that indexes a user-selected SMB2/SMB3 NAS subtree and opens complete files from local device storage. It is **not** an Android filesystem mount, does not expose the NAS to Android as a mounted drive, and is not a microSD replacement.
