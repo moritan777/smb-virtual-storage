@@ -106,6 +106,7 @@ internal fun CopyRulesScreen(
 @Composable
 private fun CopyRuleCard(rule: CopyRuleEntity, execution: CopyExecutionUiState?, viewModel: CopyRulesViewModel) {
     val busy = execution?.state in setOf(WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED, WorkInfo.State.RUNNING)
+    val manualBusy = busy && execution?.automatic == false
     ElevatedCard(
         Modifier.fillMaxWidth(),
         shape = SectionShape,
@@ -121,7 +122,11 @@ private fun CopyRuleCard(rule: CopyRuleEntity, execution: CopyExecutionUiState?,
             execution?.let { CopyExecutionStatus(it) }
             HorizontalDivider()
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Button(onClick = { viewModel.copyNow(rule) }, enabled = !busy) { Text(if (busy) "Working…" else "Copy now") }
+                if (manualBusy) {
+                    OutlinedButton(onClick = { viewModel.cancelManualCopy(rule) }) { Text("Cancel") }
+                } else {
+                    Button(onClick = { viewModel.copyNow(rule) }, enabled = !busy) { Text(if (busy) "Working…" else "Copy now") }
+                }
                 OutlinedButton(onClick = { viewModel.showActivity(rule) }) { Text("Activity") }
                 OutlinedButton(onClick = { viewModel.editRule(rule) }, enabled = !busy) { Text("Edit") }
                 TextButton(onClick = { viewModel.deleteRule(rule) }, enabled = !busy) { Text("Delete") }

@@ -199,4 +199,10 @@ class CopyRulesViewModel @Inject constructor(
             .onSuccess { message.value = "Copy queued" }
             .onFailure { message.value = "Could not queue the copy" }
     }
+
+    fun cancelManualCopy(rule: CopyRuleEntity) {
+        runCatching { scheduler.cancelManual(rule.id) }
+            .onSuccess { message.value = "Manual copy cancellation requested" }
+            .onFailure { message.value = "Could not cancel the manual copy" }
+    }
 }
