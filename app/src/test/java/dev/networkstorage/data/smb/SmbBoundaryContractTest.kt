@@ -14,6 +14,7 @@ class SmbBoundaryContractTest {
             "createPart",
             "promotePart",
             "moveToBackup",
+            "restoreBackup",
             "removePart",
             "removePromotedForRestore",
         ).forEach { mutation ->
@@ -31,6 +32,7 @@ class SmbBoundaryContractTest {
         assertTrue("openPartRead" in declared)
         assertTrue("promotePart" in declared)
         assertTrue("moveToBackup" in declared)
+        assertTrue("restoreBackup" in declared)
         assertTrue("removePart" in declared)
         assertTrue("removePromotedForRestore" in declared)
 
