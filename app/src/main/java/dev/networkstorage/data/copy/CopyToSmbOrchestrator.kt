@@ -44,16 +44,8 @@ data class CopyFileResult(
 )
 
 class CopyIntegrityException(message: String) : Exception(message)
+class CopyRestoreException(cause: Throwable) : Exception("Backup restoration failed", cause)
 
-/**
- * Performs one verified device-to-SMB file copy.
- *
- * Source traversal, Room history, WorkManager lifecycle and UI error mapping remain
- * outside this class. This class owns only the complete-file transfer transaction:
- * upload to an application-owned `.part`, verify size/SHA-256, resolve a final-name
- * conflict, promote, verify the promoted file and restore a backup when replacement
- * cannot be completed safely.
- */
 class CopyToSmbOrchestrator @Inject constructor(
     private val copyClient: SmbCopyClient,
     private val readClient: SmbClient,
@@ -101,31 +93,21 @@ class CopyToSmbOrchestrator @Inject constructor(
             requireSameHash(sourceDigest, partDigest, "Uploaded .part SHA-256 mismatch")
 
             return when (conflictPolicy) {
-                CopyConflictPolicy.KEEP_BOTH -> copyKeepBoth(
-                    connection = connection,
-                    part = activePart,
-                    originalPath = finalPath,
-                    expected = sourceDigest,
-                    sourceSize = source.size,
-                )
+                CopyConflictPolicy.KEEP_BOTH -> copyKeepBoth(connection, activePart, finalPath, sourceDigest, source.size)
                 CopyConflictPolicy.REPLACE_WITH_BACKUP -> copyReplaceWithBackup(
-                    connection = connection,
-                    part = activePart,
-                    originalPath = finalPath,
-                    expected = sourceDigest,
-                    sourceSize = source.size,
-                    operationId = operationId,
-                    now = now,
+                    connection,
+                    activePart,
+                    finalPath,
+                    sourceDigest,
+                    source.size,
+                    operationId,
+                    now,
                 )
             }
         } catch (error: Throwable) {
-            val activePart = cleanupPart
-            if (activePart != null) {
-                runCatching {
-                    copyClient.removePart(connection, credential(connection), activePart)
-                }.onFailure { cleanupError ->
-                    error.addSuppressed(cleanupError)
-                }
+            cleanupPart?.let { activePart ->
+                runCatching { copyClient.removePart(connection, credential(connection), activePart) }
+                    .onFailure { cleanupError -> error.addSuppressed(cleanupError) }
             }
             throw error
         }
@@ -160,12 +142,7 @@ class CopyToSmbOrchestrator @Inject constructor(
             if (exists(connection, candidate)) {
                 if (remoteDigest(connection, candidate) == expected) {
                     copyClient.removePart(connection, credential(connection), part)
-                    return CopyFileResult(
-                        status = CopyFileStatus.REUSED_EXISTING,
-                        destinationRelativePath = candidate,
-                        sourceSize = sourceSize,
-                        sha256 = expected.sha256,
-                    )
+                    return CopyFileResult(CopyFileStatus.REUSED_EXISTING, candidate, sourceSize, expected.sha256)
                 }
                 continue
             }
@@ -203,12 +180,7 @@ class CopyToSmbOrchestrator @Inject constructor(
 
         require(exists(connection, originalPath)) { "Destination disappeared before replacement" }
         val backupPath = backupPath(now, operationId, originalPath)
-        copyClient.moveToBackup(
-            connection = connection,
-            credential = credential(connection),
-            existingRelativePath = originalPath,
-            backupRelativePath = backupPath,
-        )
+        copyClient.moveToBackup(connection, credential(connection), originalPath, backupPath)
 
         val promoted = try {
             copyClient.promotePart(connection, credential(connection), part, originalPath)
@@ -225,29 +197,21 @@ class CopyToSmbOrchestrator @Inject constructor(
         }
 
         return CopyFileResult(
-            status = CopyFileStatus.COPIED,
-            destinationRelativePath = originalPath,
-            sourceSize = sourceSize,
-            sha256 = expected.sha256,
-            backupRelativePath = backupPath,
+            CopyFileStatus.COPIED,
+            originalPath,
+            sourceSize,
+            expected.sha256,
+            backupPath,
         )
     }
 
-    private suspend fun tryPromote(
-        connection: ConnectionConfig,
-        part: AppOwnedPart,
-        finalPath: String,
-    ): PromotedUpload? = try {
+    private suspend fun tryPromote(connection: ConnectionConfig, part: AppOwnedPart, finalPath: String): PromotedUpload? = try {
         copyClient.promotePart(connection, credential(connection), part, finalPath)
     } catch (error: IllegalArgumentException) {
         if (exists(connection, finalPath)) null else throw error
     }
 
-    private suspend fun verifyPromoted(
-        connection: ConnectionConfig,
-        promoted: PromotedUpload,
-        expected: DigestResult,
-    ) {
+    private suspend fun verifyPromoted(connection: ConnectionConfig, promoted: PromotedUpload, expected: DigestResult) {
         val actual = remoteDigest(connection, promoted.relativePath)
         requireExactSize(actual.bytes, expected.bytes, "Promoted destination size mismatch")
         requireSameHash(expected, actual, "Promoted destination SHA-256 mismatch")
@@ -260,14 +224,9 @@ class CopyToSmbOrchestrator @Inject constructor(
         originalError: Throwable,
     ) {
         runCatching {
-            copyClient.restoreBackup(
-                connection,
-                credential(connection),
-                backupPath,
-                originalPath,
-            )
+            copyClient.restoreBackup(connection, credential(connection), backupPath, originalPath)
         }.onFailure { restoreError ->
-            originalError.addSuppressed(restoreError)
+            originalError.addSuppressed(CopyRestoreException(restoreError))
         }
     }
 
@@ -285,14 +244,9 @@ class CopyToSmbOrchestrator @Inject constructor(
             return
         }
         runCatching {
-            copyClient.restoreBackup(
-                connection,
-                credential(connection),
-                backupPath,
-                originalPath,
-            )
+            copyClient.restoreBackup(connection, credential(connection), backupPath, originalPath)
         }.onFailure { restoreError ->
-            originalError.addSuppressed(restoreError)
+            originalError.addSuppressed(CopyRestoreException(restoreError))
         }
     }
 
@@ -305,11 +259,7 @@ class CopyToSmbOrchestrator @Inject constructor(
     private fun credential(connection: ConnectionConfig) =
         requireNotNull(credentialStore.get(connection.id)) { "Credential unavailable" }
 
-    private suspend fun copyAndHash(
-        input: InputStream,
-        output: java.io.OutputStream,
-        expectedSize: Long,
-    ): DigestResult {
+    private suspend fun copyAndHash(input: InputStream, output: java.io.OutputStream, expectedSize: Long): DigestResult {
         val digest = MessageDigest.getInstance("SHA-256")
         val buffer = ByteArray(BUFFER_BYTES)
         var total = 0L
@@ -350,28 +300,18 @@ class CopyToSmbOrchestrator @Inject constructor(
         if (expected.sha256 != actual.sha256) throw CopyIntegrityException(message)
     }
 
-    private fun copied(path: String, sourceSize: Long, digest: DigestResult) = CopyFileResult(
-        status = CopyFileStatus.COPIED,
-        destinationRelativePath = path,
-        sourceSize = sourceSize,
-        sha256 = digest.sha256,
-    )
+    private fun copied(path: String, sourceSize: Long, digest: DigestResult) =
+        CopyFileResult(CopyFileStatus.COPIED, path, sourceSize, digest.sha256)
 
-    private fun unchanged(path: String, sourceSize: Long, digest: DigestResult) = CopyFileResult(
-        status = CopyFileStatus.UNCHANGED,
-        destinationRelativePath = path,
-        sourceSize = sourceSize,
-        sha256 = digest.sha256,
-    )
+    private fun unchanged(path: String, sourceSize: Long, digest: DigestResult) =
+        CopyFileResult(CopyFileStatus.UNCHANGED, path, sourceSize, digest.sha256)
 
-    private fun backupPath(now: Instant, operationId: String, originalPath: String): String {
-        val timestamp = BACKUP_TIMESTAMP.format(now)
-        return "${CopyDestinationPath.RESERVED_BACKUP_DIRECTORY}/${timestamp}_${operationId}/$originalPath"
-    }
+    private fun backupPath(now: Instant, operationId: String, originalPath: String): String =
+        "${CopyDestinationPath.RESERVED_BACKUP_DIRECTORY}/${BACKUP_TIMESTAMP.format(now)}_${operationId}/$originalPath"
 
     private data class DigestResult(val bytes: Long, val sha256: String)
 
-    private fun ByteArray.toHex(): String = joinToString("") { byte -> "%02x".format(byte) }
+    private fun ByteArray.toHex(): String = joinToString("") { byte -> (byte.toInt() and 0xff).toString(16).padStart(2, '0') }
 
     private companion object {
         const val BUFFER_BYTES = 64 * 1024
