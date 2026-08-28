@@ -32,6 +32,12 @@ data class TreeCopyResult(
     val files: List<TreeCopyFileOutcome>,
 ) {
     val successCount: Int get() = files.count { it is TreeCopyFileOutcome.Success }
+    val copiedCount: Int get() = files.count {
+        it is TreeCopyFileOutcome.Success && it.result.status == CopyFileStatus.COPIED
+    }
+    val skippedCount: Int get() = files.count {
+        it is TreeCopyFileOutcome.Success && it.result.status != CopyFileStatus.COPIED
+    }
     val failureCount: Int get() = files.count { it is TreeCopyFileOutcome.Failed }
 }
 
