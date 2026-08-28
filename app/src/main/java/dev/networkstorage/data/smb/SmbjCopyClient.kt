@@ -280,7 +280,7 @@ class SmbjCopyClient @Inject constructor() : SmbCopyClient {
     }
 
     private fun sharePath(connection: ConnectionConfig, relativePath: String): String {
-        val base = RemotePath.normalize(connection.basePath)
+        val base = CopyDestinationPath.normalize(connection.basePath)
         val relative = RemotePath.normalize(relativePath)
         return listOf(base, relative).filter { it.isNotBlank() }.joinToString("\\")
     }
@@ -297,12 +297,15 @@ class SmbjCopyClient @Inject constructor() : SmbCopyClient {
         validateOperationId(part.operationId)
         val normalized = RemotePath.normalize(part.relativePath)
         require(normalized == part.relativePath) { "Part path must be normalized" }
-        require(normalized.substringAfterLast('/').endsWith(".part")) {
-            "Application-owned upload must use .part suffix"
+        val leaf = normalized.substringAfterLast('/')
+        require(leaf.endsWith(".part")) { "Application-owned upload must use .part suffix" }
+        require(leaf.contains(".${part.operationId}.")) {
+            "Application-owned upload does not match its operation ID"
         }
-        require(!normalized.startsWith("${CopyDestinationPath.RESERVED_BACKUP_DIRECTORY}/")) {
-            "Part upload cannot live in reserved backup tree"
-        }
+        require(
+            !normalized.equals(CopyDestinationPath.RESERVED_BACKUP_DIRECTORY, ignoreCase = true) &&
+                !normalized.startsWith("${CopyDestinationPath.RESERVED_BACKUP_DIRECTORY}/", ignoreCase = true),
+        ) { "Part upload cannot live in reserved backup tree" }
     }
 
     private fun validateLeafName(name: String) {
