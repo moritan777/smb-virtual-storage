@@ -45,11 +45,10 @@ import java.util.Date
 @Composable
 internal fun SettingsScreen(viewModel: MainViewModel) {
     val bytes by viewModel.cacheLimitBytes.collectAsState(); var custom by remember { mutableStateOf("") }; var confirmClearCache by remember { mutableStateOf(false) }; val cacheRoot by viewModel.cacheRootUri.collectAsState(); val mirrorRoot by viewModel.mirrorRootUri.collectAsState(); val usage by viewModel.cacheUsage.collectAsState(); val automaticSyncEnabled by viewModel.automaticMirrorSyncEnabled.collectAsState(); val automaticSyncInterval by viewModel.automaticMirrorSyncIntervalMinutes.collectAsState(); val context = LocalContext.current
-    val statusSettings = remember(context) { SettingsRepository(context.applicationContext) }
-    val lastAutomaticSyncAt by statusSettings.automaticMirrorSyncLastRunAt.collectAsState(initial = 0L)
-    val lastAutomaticSyncStatus by statusSettings.automaticMirrorSyncLastStatus.collectAsState(initial = SettingsRepository.AUTOMATIC_SYNC_STATUS_NEVER)
-    val lastAutomaticSyncFiles by statusSettings.automaticMirrorSyncLastFiles.collectAsState(initial = 0L)
-    val lastAutomaticSyncBytes by statusSettings.automaticMirrorSyncLastBytes.collectAsState(initial = 0L)
+    val lastAutomaticSyncAt by viewModel.automaticMirrorSyncLastRunAt.collectAsState()
+    val lastAutomaticSyncStatus by viewModel.automaticMirrorSyncLastStatus.collectAsState()
+    val lastAutomaticSyncFiles by viewModel.automaticMirrorSyncLastFiles.collectAsState()
+    val lastAutomaticSyncBytes by viewModel.automaticMirrorSyncLastBytes.collectAsState()
     fun persist(uri: android.net.Uri): Boolean = runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }.isSuccess
     val cachePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let { if (persist(it)) viewModel.saveStorageRoot(StorageRootKind.CACHE, it) else viewModel.message.value = "Could not retain folder access" } }; val mirrorPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let { if (persist(it)) viewModel.saveStorageRoot(StorageRootKind.MIRROR, it) else viewModel.message.value = "Could not retain folder access" } }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = ScreenPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
