@@ -41,7 +41,10 @@ import java.text.DateFormat
 import java.util.Date
 
 @Composable
-internal fun ConnectionsScreen(viewModel: MainViewModel) {
+internal fun ConnectionsScreen(
+    viewModel: MainViewModel,
+    onCopyEditorVisibilityChange: (Boolean) -> Unit = {},
+) {
     val connections by viewModel.connections.collectAsState()
     val scan by viewModel.scan.collectAsState()
     var deleteConnection by remember { mutableStateOf<ConnectionSummary?>(null) }
@@ -49,7 +52,11 @@ internal fun ConnectionsScreen(viewModel: MainViewModel) {
     var copyConnection by remember { mutableStateOf<ConnectionSummary?>(null) }
 
     copyConnection?.let { selected ->
-        CopyRulesScreen(connection = selected, onBack = { copyConnection = null })
+        CopyRulesScreen(
+            connection = selected,
+            onBack = { copyConnection = null },
+            onEditorVisibilityChange = onCopyEditorVisibilityChange,
+        )
         return
     }
 
@@ -80,7 +87,6 @@ internal fun ConnectionsScreen(viewModel: MainViewModel) {
                             Button(onClick = { viewModel.browse(summary) }) { Text("▱ Open") }
                             OutlinedButton(onClick = { copyConnection = summary }) { Text("⇧ Copy") }
                             OutlinedButton(onClick = { viewModel.startScan(summary) }, enabled = summary.hasRootRule) { Text("↻ Scan") }
-                            if (isMirror(summary.connection.rootMode)) OutlinedButton(onClick = { viewModel.openMirror(summary) }, enabled = summary.hasRootRule) { Text("⇄ Sync") }
                             TextButton(onClick = { menu = true }) { Text("⋮") }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 DropdownMenuItem(text = { Text("Copy to SMB") }, onClick = { menu = false; copyConnection = summary })

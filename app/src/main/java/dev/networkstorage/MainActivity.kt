@@ -64,13 +64,14 @@ class MainActivity : ComponentActivity() {
 private fun NetworkStorageScreen(viewModel: MainViewModel = hiltViewModel()) {
     val screen by viewModel.screen.collectAsState()
     val message by viewModel.message.collectAsState()
+    var copyEditorVisible by remember { mutableStateOf(false) }
     BackHandler(enabled = screen == AppScreen.BROWSER) { viewModel.browserBack() }
     BackHandler(enabled = screen == AppScreen.MIRROR) { viewModel.showConnections() }
     BackHandler(enabled = screen == AppScreen.CONNECTION_EDIT) { viewModel.showConnections() }
 
     Scaffold(
         bottomBar = {
-            if (screen != AppScreen.CONNECTION_EDIT) {
+            if (screen != AppScreen.CONNECTION_EDIT && !copyEditorVisible) {
                 NavigationBar {
                     NavigationBarItem(selected = screen == AppScreen.CONNECTIONS, onClick = viewModel::showConnections, icon = { Text("▤") }, label = { Text("Connections") })
                     NavigationBarItem(selected = screen == AppScreen.BROWSER, onClick = { if (viewModel.selectedConnection.value != null) viewModel.screen.value = AppScreen.BROWSER }, icon = { Text("▱") }, label = { Text("Browser") })
@@ -82,7 +83,7 @@ private fun NetworkStorageScreen(viewModel: MainViewModel = hiltViewModel()) {
         Column(Modifier.fillMaxSize().padding(padding)) {
             message?.let { Text(it, Modifier.padding(horizontal = ScreenPadding, vertical = 4.dp), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall) }
             when (screen) {
-                AppScreen.CONNECTIONS -> ConnectionsScreen(viewModel)
+                AppScreen.CONNECTIONS -> ConnectionsScreen(viewModel, onCopyEditorVisibilityChange = { copyEditorVisible = it })
                 AppScreen.CONNECTION_EDIT -> ConnectionEditorScreen(viewModel)
                 AppScreen.BROWSER -> BrowserScreen(viewModel)
                 AppScreen.MIRROR -> SyncScreen(viewModel)
