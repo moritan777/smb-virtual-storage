@@ -10,6 +10,7 @@ import dev.networkstorage.data.copy.CopyConflictPolicy
 import dev.networkstorage.data.copy.CopyPersistenceRepository
 import dev.networkstorage.data.copy.CopyToSmbScheduler
 import dev.networkstorage.data.copy.SafTreePermissionStore
+import dev.networkstorage.data.db.CopyHistoryEntity
 import dev.networkstorage.data.db.CopyNetworkPolicy
 import dev.networkstorage.data.db.CopyRuleEntity
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -46,26 +47,35 @@ class CopyRulesViewModel @Inject constructor(
     private val permissions: SafTreePermissionStore,
 ) : AndroidViewModel(application) {
     private val connectionId = MutableStateFlow<String?>(null)
+    private val activityRuleId = MutableStateFlow<String?>(null)
 
     val rules = connectionId
         .flatMapLatest { id -> if (id == null) flowOf(emptyList<CopyRuleEntity>()) else persistence.observeRules(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val recentActivity = activityRuleId
+        .flatMapLatest { ruleId -> if (ruleId == null) flowOf(emptyList<CopyHistoryEntity>()) else persistence.observeRecentHistory(ruleId) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val selectedActivityRuleId = activityRuleId
     val editor = MutableStateFlow<CopyRuleEditorState?>(null)
     val message = MutableStateFlow<String?>(null)
 
     fun setConnection(id: String) {
         if (connectionId.value != id) {
             connectionId.value = id
+            activityRuleId.value = null
             editor.value = null
         }
     }
 
     fun newRule() {
+        activityRuleId.value = null
         editor.value = CopyRuleEditorState()
     }
 
     fun editRule(rule: CopyRuleEntity) {
+        activityRuleId.value = null
         editor.value = CopyRuleEditorState(
             id = rule.id,
             sourceTreeUri = rule.sourceTreeUri,
@@ -80,6 +90,14 @@ class CopyRulesViewModel @Inject constructor(
             periodicIntervalMinutes = rule.periodicIntervalMinutes,
             createdAt = rule.createdAt,
         )
+    }
+
+    fun showActivity(rule: CopyRuleEntity) {
+        activityRuleId.value = rule.id
+    }
+
+    fun hideActivity() {
+        activityRuleId.value = null
     }
 
     fun updateEditor(value: CopyRuleEditorState) {
@@ -141,7 +159,10 @@ class CopyRulesViewModel @Inject constructor(
         scheduler.cancelManual(rule.id)
         scheduler.cancelPeriodic(rule.id)
         runCatching { persistence.deleteRule(rule.id) }
-            .onSuccess { message.value = "Copy rule deleted; source and SMB files were not changed" }
+            .onSuccess {
+                if (activityRuleId.value == rule.id) activityRuleId.value = null
+                message.value = "Copy rule deleted; source and SMB files were not changed"
+            }
             .onFailure { message.value = "Could not delete the copy rule" }
     }
 

@@ -18,6 +18,10 @@ class CopyPersistenceRepository @Inject constructor(
     private val dao: AppDao,
 ) {
     fun observeRules(connectionId: String): Flow<List<CopyRuleEntity>> = dao.observeCopyRules(connectionId)
+    fun observeRecentHistory(ruleId: String, limit: Int = DEFAULT_VISIBLE_HISTORY): Flow<List<CopyHistoryEntity>> {
+        require(limit in 1..MAX_HISTORY_LIMIT)
+        return dao.observeRecentCopyHistory(ruleId, limit)
+    }
     suspend fun rule(ruleId: String): CopyRuleEntity? = dao.copyRule(ruleId)
     suspend fun allRules(): List<CopyRuleEntity> = dao.allCopyRules()
     suspend fun automaticRules(): List<CopyRuleEntity> = dao.automaticCopyRules()
@@ -95,6 +99,7 @@ class CopyPersistenceRepository @Inject constructor(
     companion object {
         val SUPPORTED_INTERVALS = setOf(15L, 60L, 360L, 1440L)
         const val HISTORY_RETENTION_PER_RULE = 500
+        const val DEFAULT_VISIBLE_HISTORY = 20
         private const val MAX_HISTORY_LIMIT = HISTORY_RETENTION_PER_RULE
         private val SHA256 = Regex("[0-9a-f]{64}")
     }
