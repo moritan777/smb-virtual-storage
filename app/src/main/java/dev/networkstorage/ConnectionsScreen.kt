@@ -46,6 +46,12 @@ internal fun ConnectionsScreen(viewModel: MainViewModel) {
     val scan by viewModel.scan.collectAsState()
     var deleteConnection by remember { mutableStateOf<ConnectionSummary?>(null) }
     var deleteIndex by remember { mutableStateOf<ConnectionSummary?>(null) }
+    var copyConnection by remember { mutableStateOf<ConnectionSummary?>(null) }
+
+    copyConnection?.let { selected ->
+        CopyRulesScreen(connection = selected, onBack = { copyConnection = null })
+        return
+    }
 
     Column(Modifier.fillMaxSize().padding(horizontal = ScreenPadding)) {
         Spacer(Modifier.height(8.dp))
@@ -72,10 +78,12 @@ internal fun ConnectionsScreen(viewModel: MainViewModel) {
                         if (scan.ownerId == summary.connection.id && scan.state?.isFinished == false) { Text("Scanning… ${scan.count} entries", style = MaterialTheme.typography.bodySmall); LinearProgressIndicator(Modifier.fillMaxWidth()); TextButton(onClick = viewModel::cancelScan) { Text("Cancel") } }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Button(onClick = { viewModel.browse(summary) }) { Text("▱ Open") }
+                            OutlinedButton(onClick = { copyConnection = summary }) { Text("⇧ Copy") }
                             OutlinedButton(onClick = { viewModel.startScan(summary) }, enabled = summary.hasRootRule) { Text("↻ Scan") }
                             if (isMirror(summary.connection.rootMode)) OutlinedButton(onClick = { viewModel.openMirror(summary) }, enabled = summary.hasRootRule) { Text("⇄ Sync") }
                             TextButton(onClick = { menu = true }) { Text("⋮") }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                DropdownMenuItem(text = { Text("Copy to SMB") }, onClick = { menu = false; copyConnection = summary })
                                 DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; viewModel.openEditConnection(summary) })
                                 DropdownMenuItem(text = { Text("Scan") }, onClick = { menu = false; viewModel.startScan(summary) }, enabled = summary.hasRootRule)
                                 if (isMirror(summary.connection.rootMode)) DropdownMenuItem(text = { Text("Sync / compare") }, onClick = { menu = false; viewModel.openMirror(summary) }, enabled = summary.hasRootRule)
