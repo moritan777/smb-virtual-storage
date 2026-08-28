@@ -16,6 +16,7 @@ import javax.inject.Singleton
 @Singleton
 class CopyPersistenceRepository @Inject constructor(
     private val dao: AppDao,
+    private val sourceStorageGuard: CopySourceStorageGuard,
 ) {
     fun observeRules(connectionId: String): Flow<List<CopyRuleEntity>> = dao.observeCopyRules(connectionId)
     fun observeRecentHistory(ruleId: String, limit: Int = DEFAULT_VISIBLE_HISTORY): Flow<List<CopyHistoryEntity>> {
@@ -47,6 +48,7 @@ class CopyPersistenceRepository @Inject constructor(
         require(updatedAt >= createdAt) { "updatedAt must not precede createdAt" }
         require(periodicIntervalMinutes in SUPPORTED_INTERVALS) { "Unsupported periodic interval" }
         requirePersistedTreeUri(sourceTreeUri)
+        sourceStorageGuard.requireSafe(sourceTreeUri)
         val value = CopyRuleEntity(
             id, connectionId, sourceTreeUri, CopyDestinationPath.normalize(destinationPath), includeSubfolders,
             conflictPolicy, automaticCopyEnabled, networkPolicy, requiresCharging, requiresBatteryNotLow,

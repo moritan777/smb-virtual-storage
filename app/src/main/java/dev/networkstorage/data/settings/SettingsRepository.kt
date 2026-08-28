@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
+import dev.networkstorage.data.db.AppDao
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -16,7 +17,10 @@ import javax.inject.Singleton
 private val Context.settingsDataStore by preferencesDataStore("settings")
 
 @Singleton
-class SettingsRepository @Inject constructor(@ApplicationContext private val context: Context) {
+class SettingsRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val dao: AppDao,
+) {
     val cacheLimitBytes: Flow<Long> = context.settingsDataStore.data.map { it[CACHE_LIMIT] ?: DEFAULT_CACHE_LIMIT_BYTES }
     val cacheRootUri: Flow<String?> = context.settingsDataStore.data.map { it[CACHE_ROOT] }
     val mirrorRootUri: Flow<String?> = context.settingsDataStore.data.map { it[MIRROR_ROOT] }
@@ -35,6 +39,9 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
     suspend fun setStorageRoot(kind: StorageRootKind, uri: String) {
         val other = if (kind == StorageRootKind.CACHE) mirrorRootUri else cacheRootUri
         require(!TreeRelationship.overlaps(uri, other.first())) { "Cache and Mirror folders must be separate" }
+        require(dao.allCopyRules().none { TreeRelationship.overlaps(uri, it.sourceTreeUri) }) {
+            "Cache and Mirror folders must not overlap a Copy to SMB source"
+        }
         context.settingsDataStore.edit { it[if (kind == StorageRootKind.CACHE) CACHE_ROOT else MIRROR_ROOT] = uri }
     }
 
