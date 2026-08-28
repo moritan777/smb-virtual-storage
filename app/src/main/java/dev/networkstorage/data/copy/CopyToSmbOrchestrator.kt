@@ -75,7 +75,7 @@ class CopyToSmbOrchestrator @Inject constructor(
 
         copyClient.createDirectories(connection, credential(connection), finalDirectory)
 
-        var part: AppOwnedPart? = null
+        var cleanupPart: AppOwnedPart? = null
         try {
             val writeHandle = copyClient.createPart(
                 connection = connection,
@@ -84,7 +84,8 @@ class CopyToSmbOrchestrator @Inject constructor(
                 originalFileName = finalName,
                 operationId = operationId,
             )
-            part = writeHandle.part
+            val activePart = writeHandle.part
+            cleanupPart = activePart
 
             val sourceDigest = writeHandle.use { handle ->
                 source.openInput().use { input ->
@@ -93,7 +94,7 @@ class CopyToSmbOrchestrator @Inject constructor(
             }
             requireExactSize(sourceDigest.bytes, source.size, "Source changed while being copied")
 
-            val partDigest = copyClient.openPartRead(connection, credential(connection), part).use { handle ->
+            val partDigest = copyClient.openPartRead(connection, credential(connection), activePart).use { handle ->
                 hash(handle.input)
             }
             requireExactSize(partDigest.bytes, source.size, "Uploaded .part size mismatch")
@@ -102,14 +103,14 @@ class CopyToSmbOrchestrator @Inject constructor(
             return when (conflictPolicy) {
                 CopyConflictPolicy.KEEP_BOTH -> copyKeepBoth(
                     connection = connection,
-                    part = part,
+                    part = activePart,
                     originalPath = finalPath,
                     expected = sourceDigest,
                     sourceSize = source.size,
                 )
                 CopyConflictPolicy.REPLACE_WITH_BACKUP -> copyReplaceWithBackup(
                     connection = connection,
-                    part = part,
+                    part = activePart,
                     originalPath = finalPath,
                     expected = sourceDigest,
                     sourceSize = source.size,
@@ -118,10 +119,10 @@ class CopyToSmbOrchestrator @Inject constructor(
                 )
             }
         } catch (error: Throwable) {
-            val cleanupPart = part
-            if (cleanupPart != null) {
+            val activePart = cleanupPart
+            if (activePart != null) {
                 runCatching {
-                    copyClient.removePart(connection, credential(connection), cleanupPart)
+                    copyClient.removePart(connection, credential(connection), activePart)
                 }.onFailure { cleanupError ->
                     error.addSuppressed(cleanupError)
                 }
