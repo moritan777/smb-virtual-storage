@@ -12,6 +12,7 @@ import java.io.OutputStream
  * arbitrary path to cleanup APIs. This keeps partial-upload deletion scoped to files
  * created by the same application operation.
  */
+@ConsistentCopyVisibility
 data class AppOwnedPart internal constructor(
     val relativePath: String,
     val operationId: String,
@@ -20,6 +21,7 @@ data class AppOwnedPart internal constructor(
 /**
  * Newly promoted upload that may be removed only as part of post-promotion rollback.
  */
+@ConsistentCopyVisibility
 data class PromotedUpload internal constructor(
     val relativePath: String,
     val operationId: String,
