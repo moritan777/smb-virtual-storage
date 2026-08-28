@@ -1,6 +1,5 @@
 package dev.networkstorage.data.copy
 
-import android.net.Uri
 import dev.networkstorage.data.db.AppDao
 import dev.networkstorage.data.db.CopyErrorCode
 import dev.networkstorage.data.db.CopyHistoryEntity
@@ -9,6 +8,7 @@ import dev.networkstorage.data.db.CopyNetworkPolicy
 import dev.networkstorage.data.db.CopyRuleEntity
 import dev.networkstorage.domain.CopyDestinationPath
 import kotlinx.coroutines.flow.Flow
+import java.net.URI
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -172,9 +172,9 @@ class CopyPersistenceRepository @Inject constructor(
     }
 
     private fun requirePersistedTreeUri(value: String) {
-        val uri = Uri.parse(value)
+        val uri = runCatching { URI(value) }.getOrElse { throw IllegalArgumentException("Invalid source tree URI", it) }
         require(uri.scheme == "content") { "Copy source must be a SAF content URI" }
-        require(uri.authority?.isNotBlank() == true) { "Copy source URI must have an authority" }
+        require(!uri.authority.isNullOrBlank()) { "Copy source URI must have an authority" }
     }
 
     companion object {
