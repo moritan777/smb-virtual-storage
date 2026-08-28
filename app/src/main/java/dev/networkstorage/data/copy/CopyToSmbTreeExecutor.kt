@@ -35,11 +35,6 @@ data class TreeCopyResult(
     val failureCount: Int get() = files.count { it is TreeCopyFileOutcome.Failed }
 }
 
-/**
- * Enumerates one persisted SAF tree and feeds each source file into the verified transfer core.
- * Independent file failures do not stop the rest of the tree; coroutine cancellation always does.
- * File-level outcomes are persisted with safe statuses/error codes only.
- */
 class CopyToSmbTreeExecutor @Inject constructor(
     private val sourceTree: CopySourceTree,
     private val orchestrator: CopyToSmbOrchestrator,
@@ -119,25 +114,35 @@ class CopyToSmbTreeExecutor @Inject constructor(
         return TreeCopyResult(outcomes)
     }
 
-    private fun safeErrorCode(error: Throwable): CopyErrorCode = when (error) {
-        is CancellationException -> CopyErrorCode.CANCELLED
-        is FileNotFoundException, is SecurityException -> CopyErrorCode.SOURCE_UNAVAILABLE
-        is CopyIntegrityException -> if (error.message?.contains("SHA-256") == true) {
-            CopyErrorCode.HASH_MISMATCH
-        } else {
-            CopyErrorCode.SIZE_MISMATCH
+    private fun safeErrorCode(error: Throwable): CopyErrorCode {
+        if (containsRestoreFailure(error)) return CopyErrorCode.RESTORE_FAILED
+        return when (error) {
+            is CancellationException -> CopyErrorCode.CANCELLED
+            is FileNotFoundException, is SecurityException -> CopyErrorCode.SOURCE_UNAVAILABLE
+            is CopyIntegrityException -> if (error.message?.contains("SHA-256") == true) {
+                CopyErrorCode.HASH_MISMATCH
+            } else {
+                CopyErrorCode.SIZE_MISMATCH
+            }
+            is SmbFailure -> when (error.category) {
+                NetworkError.AUTHENTICATION -> CopyErrorCode.AUTHENTICATION
+                NetworkError.HOST_NOT_FOUND -> CopyErrorCode.HOST_NOT_FOUND
+                NetworkError.SHARE_NOT_FOUND -> CopyErrorCode.SHARE_NOT_FOUND
+                NetworkError.CONNECTION -> CopyErrorCode.CONNECTION
+                NetworkError.TIMEOUT -> CopyErrorCode.TIMEOUT
+                NetworkError.REMOTE_NOT_FOUND -> CopyErrorCode.REMOTE_NOT_FOUND
+                NetworkError.CANCELLED -> CopyErrorCode.CANCELLED
+                NetworkError.UNKNOWN -> CopyErrorCode.UNKNOWN
+            }
+            is IllegalArgumentException -> CopyErrorCode.DESTINATION_CONFLICT
+            else -> CopyErrorCode.UNKNOWN
         }
-        is SmbFailure -> when (error.category) {
-            NetworkError.AUTHENTICATION -> CopyErrorCode.AUTHENTICATION
-            NetworkError.HOST_NOT_FOUND -> CopyErrorCode.HOST_NOT_FOUND
-            NetworkError.SHARE_NOT_FOUND -> CopyErrorCode.SHARE_NOT_FOUND
-            NetworkError.CONNECTION -> CopyErrorCode.CONNECTION
-            NetworkError.TIMEOUT -> CopyErrorCode.TIMEOUT
-            NetworkError.REMOTE_NOT_FOUND -> CopyErrorCode.REMOTE_NOT_FOUND
-            NetworkError.CANCELLED -> CopyErrorCode.CANCELLED
-            NetworkError.UNKNOWN -> CopyErrorCode.UNKNOWN
-        }
-        is IllegalArgumentException -> CopyErrorCode.DESTINATION_CONFLICT
-        else -> CopyErrorCode.UNKNOWN
+    }
+
+    private fun containsRestoreFailure(error: Throwable): Boolean {
+        if (error is CopyRestoreException) return true
+        if (error.suppressed.any(::containsRestoreFailure)) return true
+        val cause = error.cause
+        return cause != null && cause !== error && containsRestoreFailure(cause)
     }
 }
