@@ -140,8 +140,23 @@ private fun CopyExecutionStatus(value: CopyExecutionUiState) {
         }
         WorkInfo.State.RUNNING -> {
             val retry = if (value.runAttemptCount > 0) " • retry ${value.runAttemptCount}" else ""
-            Text("$source copy running$retry", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            val fileProgress = if (value.total > 0) " • ${value.completed}/${value.total} files" else ""
+            Text("$source copy running$fileProgress$retry", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            if (value.currentSourcePath.isNotBlank()) {
+                Text(
+                    value.currentSourcePath,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                "${value.copied} copied • ${value.skipped} skipped • ${value.failed} failed",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (value.failed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         WorkInfo.State.SUCCEEDED -> Text(
             "Last copy: ${value.copied} copied • ${value.skipped} skipped • ${value.failed} failed",
