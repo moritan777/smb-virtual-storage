@@ -82,7 +82,8 @@ class CopyToSmbOrchestratorTest {
             openInput = { ByteArrayInputStream(bytes("four")) },
         )
 
-        val error = runCatching {
+        var error: Throwable? = null
+        try {
             orchestrator.copyFile(
                 connection = connection(),
                 destinationDirectory = "dest",
@@ -90,7 +91,9 @@ class CopyToSmbOrchestratorTest {
                 conflictPolicy = CopyConflictPolicy.KEEP_BOTH,
                 operationId = "op-3",
             )
-        }.exceptionOrNull()
+        } catch (caught: Throwable) {
+            error = caught
+        }
 
         assertTrue(error is CopyIntegrityException)
         assertFalse(files.containsKey("dest/photo.jpg"))
@@ -174,16 +177,16 @@ class CopyToSmbOrchestratorTest {
                 .filter { it.isNotBlank() }
                 .joinToString("/")
             val part = AppOwnedPart(path, operationId)
-            val output = ByteArrayOutputStream()
+            val buffer = ByteArrayOutputStream()
             return object : RemotePartWriteHandle {
                 private var closed = false
                 override val part: AppOwnedPart = part
-                override val output: OutputStream = output
+                override val output: OutputStream = buffer
                 override fun close() {
                     if (closed) return
                     closed = true
-                    files[path] = output.toByteArray()
-                    output.close()
+                    files[path] = buffer.toByteArray()
+                    buffer.close()
                 }
             }
         }
