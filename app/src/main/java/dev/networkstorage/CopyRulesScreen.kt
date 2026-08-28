@@ -274,6 +274,11 @@ private fun CopyRuleEditorScreen(viewModel: CopyRulesViewModel, connectionName: 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf(15L, 60L, 360L, 1440L).forEach { minutes -> ChoiceButton(copyIntervalLabel(minutes), state.periodicIntervalMinutes == minutes, Modifier.weight(1f)) { viewModel.updateEditor(state.copy(periodicIntervalMinutes = minutes)) } }
                 }
+                Text(
+                    "Automatic copy runs periodically, but Android WorkManager decides the exact execution time. The selected interval is not an exact clock schedule.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             item {
                 Text("Network", style = MaterialTheme.typography.labelMedium)
