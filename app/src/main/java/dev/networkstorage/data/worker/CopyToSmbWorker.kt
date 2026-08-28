@@ -50,22 +50,18 @@ class CopyToSmbWorker @AssistedInject constructor(
                     conflictPolicy = rule.conflictPolicy,
                     operationId = operationId,
                 )
-                setProgress(
-                    Data.Builder()
-                        .putInt(KEY_SUCCESS_COUNT, result.successCount)
-                        .putInt(KEY_FAILURE_COUNT, result.failureCount)
-                        .build()
-                )
+                val counts = Data.Builder()
+                    .putInt(KEY_SUCCESS_COUNT, result.successCount)
+                    .putInt(KEY_COPIED_COUNT, result.copiedCount)
+                    .putInt(KEY_SKIPPED_COUNT, result.skippedCount)
+                    .putInt(KEY_FAILURE_COUNT, result.failureCount)
+                    .putString(KEY_OPERATION_ID, operationId)
+                    .build()
+                setProgress(counts)
                 val retryable = result.files.filterIsInstance<TreeCopyFileOutcome.Failed>()
                     .any { isRetryable(it.error) }
                 if (result.successCount == 0 && retryable) Result.retry()
-                else Result.success(
-                    Data.Builder()
-                        .putInt(KEY_SUCCESS_COUNT, result.successCount)
-                        .putInt(KEY_FAILURE_COUNT, result.failureCount)
-                        .putString(KEY_OPERATION_ID, operationId)
-                        .build()
-                )
+                else Result.success(counts)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
@@ -103,6 +99,8 @@ class CopyToSmbWorker @AssistedInject constructor(
         const val KEY_TRIGGER = "copy_trigger"
         const val KEY_OPERATION_ID = "copy_operation_id"
         const val KEY_SUCCESS_COUNT = "copy_success_count"
+        const val KEY_COPIED_COUNT = "copy_copied_count"
+        const val KEY_SKIPPED_COUNT = "copy_skipped_count"
         const val KEY_FAILURE_COUNT = "copy_failure_count"
         const val TRIGGER_MANUAL = "manual"
         const val TRIGGER_PERIODIC = "periodic"
