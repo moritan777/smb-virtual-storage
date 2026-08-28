@@ -4,10 +4,10 @@ import android.app.Application
 import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.asFlow
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import androidx.work.getWorkInfosForUniqueWorkFlow
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.networkstorage.data.copy.CopyConflictPolicy
 import dev.networkstorage.data.copy.CopyPersistenceRepository
@@ -87,8 +87,8 @@ class CopyRulesViewModel @Inject constructor(
     val message = MutableStateFlow<String?>(null)
 
     private fun observeExecution(rule: CopyRuleEntity) = combine(
-        workManager.getWorkInfosForUniqueWorkFlow(CopyToSmbScheduler.manualName(rule.id)),
-        workManager.getWorkInfosForUniqueWorkFlow(CopyToSmbScheduler.periodicName(rule.id)),
+        workManager.getWorkInfosForUniqueWorkLiveData(CopyToSmbScheduler.manualName(rule.id)).asFlow(),
+        workManager.getWorkInfosForUniqueWorkLiveData(CopyToSmbScheduler.periodicName(rule.id)).asFlow(),
     ) { manual, periodic ->
         val periodicRunning = periodic.lastOrNull { it.state == WorkInfo.State.RUNNING }
         val selected = periodicRunning ?: manual.lastOrNull()
