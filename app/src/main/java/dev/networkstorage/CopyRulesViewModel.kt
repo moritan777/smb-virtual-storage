@@ -48,7 +48,7 @@ class CopyRulesViewModel @Inject constructor(
     private val connectionId = MutableStateFlow<String?>(null)
 
     val rules = connectionId
-        .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else persistence.observeRules(id) }
+        .flatMapLatest { id -> if (id == null) flowOf(emptyList<CopyRuleEntity>()) else persistence.observeRules(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val editor = MutableStateFlow<CopyRuleEditorState?>(null)
