@@ -15,13 +15,16 @@ import dev.networkstorage.data.credential.KeystoreCredentialStore
 import dev.networkstorage.data.db.AppDao
 import dev.networkstorage.data.db.AppDatabase
 import dev.networkstorage.data.smb.SmbClient
+import dev.networkstorage.data.smb.SmbCopyClient
 import dev.networkstorage.data.smb.SmbjClient
+import dev.networkstorage.data.smb.SmbjCopyClient
 import javax.inject.Singleton
 
 @Module @InstallIn(SingletonComponent::class)
 abstract class Bindings {
     @Binds abstract fun credentialStore(value: KeystoreCredentialStore): CredentialStore
     @Binds abstract fun smbClient(value: SmbjClient): SmbClient
+    @Binds abstract fun smbCopyClient(value: SmbjCopyClient): SmbCopyClient
 }
 
 @Module @InstallIn(SingletonComponent::class)
