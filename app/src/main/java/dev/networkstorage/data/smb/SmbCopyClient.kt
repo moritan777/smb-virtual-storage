@@ -95,6 +95,18 @@ interface SmbCopyClient {
         backupRelativePath: String,
     )
 
+    /**
+     * Restores one file from the reserved backup tree to its original destination.
+     * This operation exists only for Replace-with-backup rollback and must never
+     * overwrite a path that appeared concurrently.
+     */
+    suspend fun restoreBackup(
+        connection: ConnectionConfig,
+        credential: Credential,
+        backupRelativePath: String,
+        originalRelativePath: String,
+    )
+
     /** Removes only an incomplete or failed application-owned `.part` upload. */
     suspend fun removePart(
         connection: ConnectionConfig,
