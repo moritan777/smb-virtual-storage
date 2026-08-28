@@ -25,7 +25,7 @@ class CopyToSmbScheduler @Inject constructor(
     private val workManager = WorkManager.getInstance(context)
 
     fun enqueueManual(ruleId: String) {
-        require(ruleId.isNotBlank()) { "Rule ID must not be blank" }
+        require(ruleId.isNotBlank())
         val request = OneTimeWorkRequestBuilder<CopyToSmbWorker>()
             .setInputData(input(ruleId, CopyToSmbWorker.TRIGGER_MANUAL))
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
@@ -43,34 +43,23 @@ class CopyToSmbScheduler @Inject constructor(
             .setInputData(input(rule.id, CopyToSmbWorker.TRIGGER_PERIODIC))
             .setConstraints(constraints(rule))
             .build()
-        workManager.enqueueUniquePeriodicWork(
-            periodicName(rule.id),
-            ExistingPeriodicWorkPolicy.UPDATE,
-            request,
-        )
+        workManager.enqueueUniquePeriodicWork(periodicName(rule.id), ExistingPeriodicWorkPolicy.UPDATE, request)
     }
 
-    fun cancelPeriodic(ruleId: String) {
-        require(ruleId.isNotBlank()) { "Rule ID must not be blank" }
-        workManager.cancelUniqueWork(periodicName(ruleId))
-    }
-
-    fun cancelManual(ruleId: String) {
-        require(ruleId.isNotBlank()) { "Rule ID must not be blank" }
-        workManager.cancelUniqueWork(manualName(ruleId))
-    }
+    fun cancelPeriodic(ruleId: String) { require(ruleId.isNotBlank()); workManager.cancelUniqueWork(periodicName(ruleId)) }
+    fun cancelManual(ruleId: String) { require(ruleId.isNotBlank()); workManager.cancelUniqueWork(manualName(ruleId)) }
 
     suspend fun reconcileAutomaticRules() {
-        persistence.automaticRules().forEach(::schedule)
+        persistence.allRules().forEach { rule ->
+            if (rule.automaticCopyEnabled) schedule(rule) else cancelPeriodic(rule.id)
+        }
     }
 
     internal fun constraints(rule: CopyRuleEntity): Constraints = Constraints.Builder()
-        .setRequiredNetworkType(
-            when (rule.networkPolicy) {
-                CopyNetworkPolicy.ANY_CONNECTED -> NetworkType.CONNECTED
-                CopyNetworkPolicy.UNMETERED_ONLY -> NetworkType.UNMETERED
-            }
-        )
+        .setRequiredNetworkType(when (rule.networkPolicy) {
+            CopyNetworkPolicy.ANY_CONNECTED -> NetworkType.CONNECTED
+            CopyNetworkPolicy.UNMETERED_ONLY -> NetworkType.UNMETERED
+        })
         .setRequiresCharging(rule.requiresCharging)
         .setRequiresBatteryNotLow(rule.requiresBatteryNotLow)
         .setRequiresStorageNotLow(rule.requiresStorageNotLow)
