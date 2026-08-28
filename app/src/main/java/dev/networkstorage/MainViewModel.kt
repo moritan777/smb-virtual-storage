@@ -98,6 +98,10 @@ class MainViewModel @Inject constructor(
     val mirrorRootUri = settings.mirrorRootUri.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val automaticMirrorSyncEnabled = settings.automaticMirrorSyncEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val automaticMirrorSyncIntervalMinutes = settings.automaticMirrorSyncIntervalMinutes.stateIn(viewModelScope, SharingStarted.Eagerly, SettingsRepository.DEFAULT_AUTOMATIC_MIRROR_SYNC_INTERVAL_MINUTES)
+    val automaticMirrorSyncLastRunAt = settings.automaticMirrorSyncLastRunAt.stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
+    val automaticMirrorSyncLastStatus = settings.automaticMirrorSyncLastStatus.stateIn(viewModelScope, SharingStarted.Eagerly, SettingsRepository.AUTOMATIC_SYNC_STATUS_NEVER)
+    val automaticMirrorSyncLastFiles = settings.automaticMirrorSyncLastFiles.stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
+    val automaticMirrorSyncLastBytes = settings.automaticMirrorSyncLastBytes.stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
     val cacheUsage = dao.observeCacheUsage().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
     val download = MutableStateFlow(ScanUiState())
     val mirror = MutableStateFlow(MirrorUiState())
@@ -151,7 +155,7 @@ class MainViewModel @Inject constructor(
     fun deleteConnection(connection: ConnectionSummary) = viewModelScope.launch { workManager.cancelUniqueWork("manual-scan-${connection.connection.id}"); runCatching { repository.deleteConnection(connection.connection.id) }.onSuccess { if (selectedConnection.value?.connection?.id == connection.connection.id) selectedConnection.value = null; message.value = "Local connection and index deleted" }.onFailure { message.value = "Could not safely delete the local connection" } }
     fun deleteRootIndex(connection: ConnectionSummary) = viewModelScope.launch { workManager.cancelUniqueWork("manual-scan-${connection.connection.id}"); runCatching { repository.deleteRootIndex(connection.connection.id) }.onSuccess { message.value = "Local index target deleted" }.onFailure { message.value = "Could not delete the local index target" } }
     fun setCacheLimitGib(input: String) = viewModelScope.launch { SettingsRepository.gibToBytes(input).onSuccess { bytes -> settings.setCacheLimitBytes(bytes); message.value = "Cache limit saved" }.onFailure { message.value = "Enter a whole number of at least 1 GB" } }
-    fun saveStorageRoot(kind: StorageRootKind, uri: Uri) = viewModelScope.launch { runCatching { settings.setStorageRoot(kind, uri.toString()) }.onSuccess { message.value = "Storage folder saved; existing files were not moved" }.onFailure { message.value = "Cache and Mirror folders must not be the same or nested" } }
+    fun saveStorageRoot(kind: StorageRootKind, uri: Uri) = viewModelScope.launch { runCatching { settings.setStorageRoot(kind, uri.toString()) }.onSuccess { message.value = "Storage folder saved; existing files were not moved" }.onFailure { message.value = "Storage folder overlaps Cache, Mirror, or an existing Copy source" } }
     fun setAutomaticMirrorSyncEnabled(enabled: Boolean) = viewModelScope.launch {
         if (enabled && mirrorRootUri.value == null) { message.value = "Set the Mirror folder before enabling automatic sync"; return@launch }
         runCatching { settings.setAutomaticMirrorSyncEnabled(enabled); if (enabled) mirrorSyncScheduler.schedule(automaticMirrorSyncIntervalMinutes.value) else mirrorSyncScheduler.cancel() }
