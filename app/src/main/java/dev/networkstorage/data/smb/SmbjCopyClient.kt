@@ -177,6 +177,30 @@ class SmbjCopyClient @Inject constructor() : SmbCopyClient {
         file.use { it.rename(remoteBackup, false) }
     }
 
+    override suspend fun restoreBackup(
+        connection: ConnectionConfig,
+        credential: Credential,
+        backupRelativePath: String,
+        originalRelativePath: String,
+    ) = withShare(connection, credential) { share ->
+        val backup = normalizeBackupPath(backupRelativePath)
+        val original = CopyDestinationPath.normalize(originalRelativePath)
+        require(original.isNotBlank()) { "Original destination must identify a file" }
+        val remoteOriginal = sharePath(connection, original)
+        require(!share.fileExists(remoteOriginal) && !share.folderExists(remoteOriginal)) {
+            "Original destination already exists"
+        }
+        val file = share.openFile(
+            sharePath(connection, backup),
+            EnumSet.of(AccessMask.DELETE, AccessMask.FILE_READ_ATTRIBUTES),
+            EnumSet.noneOf(FileAttributes::class.java),
+            SMB2ShareAccess.ALL,
+            SMB2CreateDisposition.FILE_OPEN,
+            EnumSet.noneOf(SMB2CreateOptions::class.java),
+        )
+        file.use { it.rename(remoteOriginal, false) }
+    }
+
     override suspend fun removePart(
         connection: ConnectionConfig,
         credential: Credential,
