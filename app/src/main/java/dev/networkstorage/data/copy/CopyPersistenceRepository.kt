@@ -167,7 +167,7 @@ class CopyPersistenceRepository @Inject constructor(
             backupRelativePath = backupRelativePath,
             completedAt = completedAt,
         )
-        dao.saveCopyHistory(value)
+        dao.saveCopyHistory(value, HISTORY_RETENTION_PER_RULE)
         return value
     }
 
@@ -179,7 +179,8 @@ class CopyPersistenceRepository @Inject constructor(
 
     companion object {
         val SUPPORTED_INTERVALS = setOf(15L, 60L, 360L, 1440L)
-        private const val MAX_HISTORY_LIMIT = 500
+        const val HISTORY_RETENTION_PER_RULE = 500
+        private const val MAX_HISTORY_LIMIT = HISTORY_RETENTION_PER_RULE
         private val SHA256 = Regex("[0-9a-f]{64}")
     }
 }
