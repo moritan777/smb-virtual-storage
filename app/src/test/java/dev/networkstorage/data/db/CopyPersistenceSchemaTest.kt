@@ -13,6 +13,11 @@ class CopyPersistenceSchemaTest {
     }
 
     @Test
+    fun `copy history retention is explicitly bounded per rule`() {
+        assertEquals(500, CopyPersistenceRepository.HISTORY_RETENTION_PER_RULE)
+    }
+
+    @Test
     fun `copy history stores no credential or raw error field`() {
         val names = CopyHistoryEntity::class.java.declaredFields.map { it.name }.toSet()
 
