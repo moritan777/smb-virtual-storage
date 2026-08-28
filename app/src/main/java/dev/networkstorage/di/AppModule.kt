@@ -10,6 +10,8 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import dev.networkstorage.data.copy.CopySourceTree
+import dev.networkstorage.data.copy.SafCopySourceTree
 import dev.networkstorage.data.credential.CredentialStore
 import dev.networkstorage.data.credential.KeystoreCredentialStore
 import dev.networkstorage.data.db.AppDao
@@ -25,6 +27,7 @@ abstract class Bindings {
     @Binds abstract fun credentialStore(value: KeystoreCredentialStore): CredentialStore
     @Binds abstract fun smbClient(value: SmbjClient): SmbClient
     @Binds abstract fun smbCopyClient(value: SmbjCopyClient): SmbCopyClient
+    @Binds abstract fun copySourceTree(value: SafCopySourceTree): CopySourceTree
 }
 
 @Module @InstallIn(SingletonComponent::class)
