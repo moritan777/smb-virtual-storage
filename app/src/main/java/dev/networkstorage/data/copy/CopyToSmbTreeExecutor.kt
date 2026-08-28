@@ -28,6 +28,34 @@ sealed interface TreeCopyFileOutcome {
     ) : TreeCopyFileOutcome
 }
 
+data class TreeCopyProgress(
+    val completedCount: Int,
+    val totalCount: Int,
+    val copiedCount: Int,
+    val skippedCount: Int,
+    val failureCount: Int,
+    val currentSourceRelativePath: String,
+) {
+    companion object {
+        fun from(
+            outcomes: List<TreeCopyFileOutcome>,
+            totalCount: Int,
+            currentSourceRelativePath: String = outcomes.lastOrNull()?.sourceRelativePath.orEmpty(),
+        ) = TreeCopyProgress(
+            completedCount = outcomes.size,
+            totalCount = totalCount,
+            copiedCount = outcomes.count {
+                it is TreeCopyFileOutcome.Success && it.result.status == CopyFileStatus.COPIED
+            },
+            skippedCount = outcomes.count {
+                it is TreeCopyFileOutcome.Success && it.result.status != CopyFileStatus.COPIED
+            },
+            failureCount = outcomes.count { it is TreeCopyFileOutcome.Failed },
+            currentSourceRelativePath = currentSourceRelativePath,
+        )
+    }
+}
+
 data class TreeCopyResult(
     val files: List<TreeCopyFileOutcome>,
 ) {
@@ -55,12 +83,14 @@ class CopyToSmbTreeExecutor @Inject constructor(
         conflictPolicy: CopyConflictPolicy,
         operationId: String,
         completedAt: () -> Long = System::currentTimeMillis,
+        onProgress: suspend (TreeCopyProgress) -> Unit = {},
     ): TreeCopyResult {
         require(ruleId.isNotBlank()) { "Rule ID must not be blank" }
         require(operationId.isNotBlank()) { "Operation ID must not be blank" }
         val sources = sourceTree.listFiles(sourceTreeUri, includeSubfolders)
         val outcomes = ArrayList<TreeCopyFileOutcome>(sources.size)
 
+        onProgress(TreeCopyProgress.from(outcomes, sources.size))
         for ((index, source) in sources.withIndex()) {
             coroutineContext.ensureActive()
             val fileOperationId = "$operationId-$index"
@@ -115,6 +145,7 @@ class CopyToSmbTreeExecutor @Inject constructor(
                 }.onFailure { historyError -> error.addSuppressed(historyError) }
                 outcomes += TreeCopyFileOutcome.Failed(source.relativePath, error)
             }
+            onProgress(TreeCopyProgress.from(outcomes, sources.size, source.relativePath))
         }
 
         return TreeCopyResult(outcomes)
