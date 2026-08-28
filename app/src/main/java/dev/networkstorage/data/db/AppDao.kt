@@ -44,16 +44,27 @@ interface AppDao {
     @Query("SELECT cache_entries.* FROM cache_entries LEFT JOIN indexed_entries ON indexed_entries.connectionId=cache_entries.connectionId AND indexed_entries.relativePath=cache_entries.relativePath WHERE cache_entries.connectionId=:connectionId AND indexed_entries.relativePath IS NULL") suspend fun orphanCacheEntries(connectionId: String): List<CacheEntryEntity>
     @Query("DELETE FROM cache_entries") suspend fun deleteAllCacheRows()
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun saveCopyRule(value: CopyRuleEntity)
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertCopyRule(value: CopyRuleEntity): Long
+    @Update suspend fun updateCopyRule(value: CopyRuleEntity)
     @Query("SELECT * FROM copy_rules WHERE id=:ruleId") suspend fun copyRule(ruleId: String): CopyRuleEntity?
     @Query("SELECT * FROM copy_rules WHERE connectionId=:connectionId ORDER BY createdAt ASC") fun observeCopyRules(connectionId: String): Flow<List<CopyRuleEntity>>
     @Query("SELECT * FROM copy_rules WHERE automaticCopyEnabled=1 ORDER BY id") suspend fun automaticCopyRules(): List<CopyRuleEntity>
     @Query("DELETE FROM copy_rules WHERE id=:ruleId") suspend fun deleteCopyRule(ruleId: String)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun saveCopyHistory(value: CopyHistoryEntity)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertCopyHistory(value: CopyHistoryEntity)
+    @Query("DELETE FROM copy_history WHERE ruleId=:ruleId AND id IN (SELECT id FROM copy_history WHERE ruleId=:ruleId ORDER BY completedAt DESC, id DESC LIMIT -1 OFFSET :keep)") suspend fun pruneCopyHistory(ruleId: String, keep: Int)
     @Query("SELECT * FROM copy_history WHERE ruleId=:ruleId ORDER BY completedAt DESC LIMIT :limit") suspend fun recentCopyHistory(ruleId: String, limit: Int): List<CopyHistoryEntity>
     @Query("SELECT * FROM copy_history WHERE operationId=:operationId ORDER BY completedAt ASC, sourceRelativePath COLLATE NOCASE ASC") suspend fun copyHistoryForOperation(operationId: String): List<CopyHistoryEntity>
     @Query("SELECT COUNT(*) FROM copy_history WHERE ruleId=:ruleId") suspend fun copyHistoryCount(ruleId: String): Long
+
+    @Transaction suspend fun saveCopyRule(value: CopyRuleEntity) {
+        if (insertCopyRule(value) == -1L) updateCopyRule(value)
+    }
+
+    @Transaction suspend fun saveCopyHistory(value: CopyHistoryEntity, keep: Int) {
+        insertCopyHistory(value)
+        pruneCopyHistory(value.ruleId, keep)
+    }
 
     @Transaction suspend fun deleteConnection(connectionId: String) = deleteConnectionRow(connectionId)
     @Transaction suspend fun deleteRootIndex(connectionId: String) {
