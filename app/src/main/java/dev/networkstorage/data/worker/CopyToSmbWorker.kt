@@ -11,6 +11,7 @@ import dev.networkstorage.data.copy.CopyPersistenceRepository
 import dev.networkstorage.data.copy.CopyRuleExecutionGate
 import dev.networkstorage.data.copy.CopyToSmbTreeExecutor
 import dev.networkstorage.data.copy.TreeCopyFileOutcome
+import dev.networkstorage.data.copy.TreeCopyProgress
 import dev.networkstorage.data.db.AppDao
 import dev.networkstorage.data.db.ConnectionEntity
 import dev.networkstorage.domain.ConnectionConfig
@@ -49,12 +50,17 @@ class CopyToSmbWorker @AssistedInject constructor(
                     includeSubfolders = rule.includeSubfolders,
                     conflictPolicy = rule.conflictPolicy,
                     operationId = operationId,
+                    onProgress = { progress ->
+                        setProgress(progressData(operationId, progress))
+                    },
                 )
                 val counts = Data.Builder()
                     .putInt(KEY_SUCCESS_COUNT, result.successCount)
                     .putInt(KEY_COPIED_COUNT, result.copiedCount)
                     .putInt(KEY_SKIPPED_COUNT, result.skippedCount)
                     .putInt(KEY_FAILURE_COUNT, result.failureCount)
+                    .putInt(KEY_COMPLETED_COUNT, result.files.size)
+                    .putInt(KEY_TOTAL_COUNT, result.files.size)
                     .putString(KEY_OPERATION_ID, operationId)
                     .build()
                 setProgress(counts)
@@ -69,6 +75,16 @@ class CopyToSmbWorker @AssistedInject constructor(
             }
         }
     }
+
+    private fun progressData(operationId: String, progress: TreeCopyProgress) = Data.Builder()
+        .putString(KEY_OPERATION_ID, operationId)
+        .putInt(KEY_COPIED_COUNT, progress.copiedCount)
+        .putInt(KEY_SKIPPED_COUNT, progress.skippedCount)
+        .putInt(KEY_FAILURE_COUNT, progress.failureCount)
+        .putInt(KEY_COMPLETED_COUNT, progress.completedCount)
+        .putInt(KEY_TOTAL_COUNT, progress.totalCount)
+        .putString(KEY_CURRENT_SOURCE_PATH, progress.currentSourceRelativePath)
+        .build()
 
     private fun isRetryable(error: Throwable): Boolean {
         if (error is SmbFailure) {
@@ -102,6 +118,9 @@ class CopyToSmbWorker @AssistedInject constructor(
         const val KEY_COPIED_COUNT = "copy_copied_count"
         const val KEY_SKIPPED_COUNT = "copy_skipped_count"
         const val KEY_FAILURE_COUNT = "copy_failure_count"
+        const val KEY_COMPLETED_COUNT = "copy_completed_count"
+        const val KEY_TOTAL_COUNT = "copy_total_count"
+        const val KEY_CURRENT_SOURCE_PATH = "copy_current_source_path"
         const val TRIGGER_MANUAL = "manual"
         const val TRIGGER_PERIODIC = "periodic"
     }
