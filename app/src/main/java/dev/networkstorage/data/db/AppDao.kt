@@ -47,6 +47,7 @@ interface AppDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertCopyRule(value: CopyRuleEntity): Long
     @Update suspend fun updateCopyRule(value: CopyRuleEntity)
     @Query("SELECT * FROM copy_rules WHERE id=:ruleId") suspend fun copyRule(ruleId: String): CopyRuleEntity?
+    @Query("SELECT * FROM copy_rules ORDER BY id") suspend fun allCopyRules(): List<CopyRuleEntity>
     @Query("SELECT * FROM copy_rules WHERE connectionId=:connectionId ORDER BY createdAt ASC") fun observeCopyRules(connectionId: String): Flow<List<CopyRuleEntity>>
     @Query("SELECT * FROM copy_rules WHERE automaticCopyEnabled=1 ORDER BY id") suspend fun automaticCopyRules(): List<CopyRuleEntity>
     @Query("DELETE FROM copy_rules WHERE id=:ruleId") suspend fun deleteCopyRule(ruleId: String)
@@ -57,26 +58,9 @@ interface AppDao {
     @Query("SELECT * FROM copy_history WHERE operationId=:operationId ORDER BY completedAt ASC, sourceRelativePath COLLATE NOCASE ASC") suspend fun copyHistoryForOperation(operationId: String): List<CopyHistoryEntity>
     @Query("SELECT COUNT(*) FROM copy_history WHERE ruleId=:ruleId") suspend fun copyHistoryCount(ruleId: String): Long
 
-    @Transaction suspend fun saveCopyRule(value: CopyRuleEntity) {
-        if (insertCopyRule(value) == -1L) updateCopyRule(value)
-    }
-
-    @Transaction suspend fun saveCopyHistory(value: CopyHistoryEntity, keep: Int) {
-        insertCopyHistory(value)
-        pruneCopyHistory(value.ruleId, keep)
-    }
-
+    @Transaction suspend fun saveCopyRule(value: CopyRuleEntity) { if (insertCopyRule(value) == -1L) updateCopyRule(value) }
+    @Transaction suspend fun saveCopyHistory(value: CopyHistoryEntity, keep: Int) { insertCopyHistory(value); pruneCopyHistory(value.ruleId, keep) }
     @Transaction suspend fun deleteConnection(connectionId: String) = deleteConnectionRow(connectionId)
-    @Transaction suspend fun deleteRootIndex(connectionId: String) {
-        deleteRootRuleRow(connectionId)
-        deleteIndexedEntries(connectionId)
-        deleteScanRuns(connectionId)
-    }
-
-    @Transaction
-    suspend fun completeScan(connectionId: String, scanId: String, count: Long, now: Long) {
-        deleteMissingEntries(connectionId, scanId)
-        updateScanCount(scanId, count)
-        finishScan(scanId, ScanStatus.SUCCEEDED, now, null)
-    }
+    @Transaction suspend fun deleteRootIndex(connectionId: String) { deleteRootRuleRow(connectionId); deleteIndexedEntries(connectionId); deleteScanRuns(connectionId) }
+    @Transaction suspend fun completeScan(connectionId: String, scanId: String, count: Long, now: Long) { deleteMissingEntries(connectionId, scanId); updateScanCount(scanId, count); finishScan(scanId, ScanStatus.SUCCEEDED, now, null) }
 }

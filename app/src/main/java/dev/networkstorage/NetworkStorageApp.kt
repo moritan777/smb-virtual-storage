@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import dagger.hilt.android.HiltAndroidApp
+import dev.networkstorage.data.copy.CopyToSmbScheduler
 import dev.networkstorage.data.mirror.MirrorSyncScheduler
 import dev.networkstorage.data.settings.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
@@ -18,6 +19,7 @@ class NetworkStorageApp : Application(), Configuration.Provider {
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var settings: SettingsRepository
     @Inject lateinit var mirrorSyncScheduler: MirrorSyncScheduler
+    @Inject lateinit var copyToSmbScheduler: CopyToSmbScheduler
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -34,6 +36,7 @@ class NetworkStorageApp : Application(), Configuration.Provider {
             } else {
                 mirrorSyncScheduler.cancel()
             }
+            copyToSmbScheduler.reconcileAutomaticRules()
         }
     }
 }
