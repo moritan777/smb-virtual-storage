@@ -25,11 +25,13 @@ interface CopySourceTree {
  */
 class SafCopySourceTree @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val storageGuard: CopySourceStorageGuard,
 ) : CopySourceTree {
     override suspend fun listFiles(
         treeUri: String,
         includeSubfolders: Boolean,
     ): List<CopySourceFile> = withContext(Dispatchers.IO) {
+        storageGuard.requireSafe(treeUri)
         val uri = Uri.parse(treeUri)
         require(uri.scheme == "content") { "Copy source must be a SAF content URI" }
 
