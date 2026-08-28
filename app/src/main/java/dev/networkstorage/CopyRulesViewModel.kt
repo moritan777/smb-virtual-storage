@@ -50,6 +50,9 @@ data class CopyExecutionUiState(
     val copied: Int = 0,
     val skipped: Int = 0,
     val failed: Int = 0,
+    val completed: Int = 0,
+    val total: Int = 0,
+    val currentSourcePath: String = "",
     val runAttemptCount: Int = 0,
 )
 
@@ -100,6 +103,9 @@ class CopyRulesViewModel @Inject constructor(
                 copied = data.getInt(CopyToSmbWorker.KEY_COPIED_COUNT, 0),
                 skipped = data.getInt(CopyToSmbWorker.KEY_SKIPPED_COUNT, 0),
                 failed = data.getInt(CopyToSmbWorker.KEY_FAILURE_COUNT, 0),
+                completed = data.getInt(CopyToSmbWorker.KEY_COMPLETED_COUNT, 0),
+                total = data.getInt(CopyToSmbWorker.KEY_TOTAL_COUNT, 0),
+                currentSourcePath = data.getString(CopyToSmbWorker.KEY_CURRENT_SOURCE_PATH).orEmpty(),
                 runAttemptCount = info.runAttemptCount,
             )
         }
@@ -174,7 +180,7 @@ class CopyRulesViewModel @Inject constructor(
             )
             scheduler.schedule(saved)
         }.onSuccess { editor.value = null; message.value = "Copy rule saved" }
-            .onFailure { message.value = "Check the source folder and SMB destination path" }
+            .onFailure { message.value = it.message?.takeIf(String::isNotBlank) ?: "Check the source folder and SMB destination path" }
     }
 
     fun deleteRule(rule: CopyRuleEntity) = viewModelScope.launch {
