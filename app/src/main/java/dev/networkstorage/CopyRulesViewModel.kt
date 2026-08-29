@@ -65,12 +65,6 @@ internal fun selectCopyWorkInfo(
     manual: List<WorkInfo>,
     periodic: List<WorkInfo>,
 ): SelectedCopyWork? {
-    periodic
-        .asSequence()
-        .filter { it.state == WorkInfo.State.RUNNING }
-        .minByOrNull { it.id.toString() }
-        ?.let { return SelectedCopyWork(it, automatic = true) }
-
     manual
         .asSequence()
         .filter { it.state in ACTIVE_MANUAL_STATES }
@@ -80,6 +74,12 @@ internal fun selectCopyWorkInfo(
                 .thenBy { it.id.toString() },
         )
         ?.let { return SelectedCopyWork(it, automatic = false) }
+
+    periodic
+        .asSequence()
+        .filter { it.state == WorkInfo.State.RUNNING }
+        .minByOrNull { it.id.toString() }
+        ?.let { return SelectedCopyWork(it, automatic = true) }
 
     return manual
         .maxWithOrNull(
