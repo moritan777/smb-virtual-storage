@@ -1,5 +1,6 @@
 package dev.networkstorage
 
+import androidx.work.Data
 import androidx.work.WorkInfo
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -30,7 +31,13 @@ class CopyWorkSelectionTest {
     }
 
     private fun work(state: WorkInfo.State, kind: String): WorkInfo =
-        WorkInfo.Builder(UUID.nameUUIDFromBytes(kind.toByteArray()), emptyList())
-            .setState(state)
-            .build()
+        WorkInfo(
+            UUID.nameUUIDFromBytes(kind.toByteArray()),
+            state,
+            Data.EMPTY,
+            emptyList(),
+            Data.EMPTY,
+            0,
+            0,
+        )
 }
