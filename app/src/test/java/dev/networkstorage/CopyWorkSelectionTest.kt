@@ -35,7 +35,7 @@ class CopyWorkSelectionTest {
             UUID.nameUUIDFromBytes(kind.toByteArray()),
             state,
             Data.EMPTY,
-            emptyList(),
+            emptySet(),
             Data.EMPTY,
             0,
             0,
