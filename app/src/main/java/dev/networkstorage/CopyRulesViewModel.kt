@@ -56,6 +56,52 @@ data class CopyExecutionUiState(
     val runAttemptCount: Int = 0,
 )
 
+internal data class SelectedCopyWork(
+    val info: WorkInfo,
+    val automatic: Boolean,
+)
+
+internal fun selectCopyWorkInfo(
+    manual: List<WorkInfo>,
+    periodic: List<WorkInfo>,
+): SelectedCopyWork? {
+    periodic
+        .asSequence()
+        .filter { it.state == WorkInfo.State.RUNNING }
+        .minByOrNull { it.id.toString() }
+        ?.let { return SelectedCopyWork(it, automatic = true) }
+
+    manual
+        .asSequence()
+        .filter { it.state in ACTIVE_MANUAL_STATES }
+        .maxWithOrNull(
+            compareBy<WorkInfo> { manualStatePriority(it.state) }
+                .thenBy { CopyToSmbScheduler.manualEnqueuedAt(it.tags) ?: Long.MIN_VALUE }
+                .thenBy { it.id.toString() },
+        )
+        ?.let { return SelectedCopyWork(it, automatic = false) }
+
+    return manual
+        .maxWithOrNull(
+            compareBy<WorkInfo> { CopyToSmbScheduler.manualEnqueuedAt(it.tags) ?: Long.MIN_VALUE }
+                .thenBy { it.id.toString() },
+        )
+        ?.let { SelectedCopyWork(it, automatic = false) }
+}
+
+private val ACTIVE_MANUAL_STATES = setOf(
+    WorkInfo.State.ENQUEUED,
+    WorkInfo.State.BLOCKED,
+    WorkInfo.State.RUNNING,
+)
+
+private fun manualStatePriority(state: WorkInfo.State) = when (state) {
+    WorkInfo.State.RUNNING -> 3
+    WorkInfo.State.BLOCKED -> 2
+    WorkInfo.State.ENQUEUED -> 1
+    else -> 0
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class CopyRulesViewModel @Inject constructor(
@@ -93,13 +139,12 @@ class CopyRulesViewModel @Inject constructor(
         workManager.getWorkInfosForUniqueWorkLiveData(CopyToSmbScheduler.manualName(rule.id)).asFlow(),
         workManager.getWorkInfosForUniqueWorkLiveData(CopyToSmbScheduler.periodicName(rule.id)).asFlow(),
     ) { manual, periodic ->
-        val periodicRunning = periodic.lastOrNull { it.state == WorkInfo.State.RUNNING }
-        val selected = periodicRunning ?: manual.lastOrNull()
-        selected?.let { info ->
+        selectCopyWorkInfo(manual, periodic)?.let { selected ->
+            val info = selected.info
             val data = if (info.state.isFinished) info.outputData else info.progress
             CopyExecutionUiState(
                 state = info.state,
-                automatic = periodicRunning?.id == info.id,
+                automatic = selected.automatic,
                 copied = data.getInt(CopyToSmbWorker.KEY_COPIED_COUNT, 0),
                 skipped = data.getInt(CopyToSmbWorker.KEY_SKIPPED_COUNT, 0),
                 failed = data.getInt(CopyToSmbWorker.KEY_FAILURE_COUNT, 0),
