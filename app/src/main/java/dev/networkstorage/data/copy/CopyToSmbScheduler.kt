@@ -29,6 +29,7 @@ class CopyToSmbScheduler @Inject constructor(
         val request = OneTimeWorkRequestBuilder<CopyToSmbWorker>()
             .setInputData(input(ruleId, CopyToSmbWorker.TRIGGER_MANUAL))
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .addTag(manualRunTag(System.currentTimeMillis()))
             .build()
         workManager.enqueueUniqueWork(manualName(ruleId), ExistingWorkPolicy.KEEP, request)
     }
@@ -71,7 +72,16 @@ class CopyToSmbScheduler @Inject constructor(
         .build()
 
     companion object {
+        private const val MANUAL_RUN_TAG_PREFIX = "copy-to-smb-manual-enqueued-at-"
+
         fun manualName(ruleId: String) = "copy-to-smb-manual-$ruleId"
         fun periodicName(ruleId: String) = "copy-to-smb-periodic-$ruleId"
+
+        internal fun manualRunTag(enqueuedAt: Long) = "$MANUAL_RUN_TAG_PREFIX$enqueuedAt"
+
+        internal fun manualEnqueuedAt(tags: Set<String>): Long? = tags.asSequence()
+            .filter { it.startsWith(MANUAL_RUN_TAG_PREFIX) }
+            .mapNotNull { it.removePrefix(MANUAL_RUN_TAG_PREFIX).toLongOrNull() }
+            .maxOrNull()
     }
 }
