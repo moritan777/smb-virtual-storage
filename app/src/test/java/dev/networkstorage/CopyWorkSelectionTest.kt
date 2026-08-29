@@ -1,7 +1,6 @@
 package dev.networkstorage
 
 import androidx.work.WorkInfo
-import dev.networkstorage.data.copy.CopyToSmbScheduler
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -31,18 +30,7 @@ class CopyWorkSelectionTest {
     }
 
     private fun work(state: WorkInfo.State, kind: String): WorkInfo =
-        WorkInfo(
-            UUID.nameUUIDFromBytes(kind.toByteArray()),
-            state,
-            androidx.work.Data.EMPTY,
-            emptyList(),
-            androidx.work.Data.EMPTY,
-            0,
-            0,
-        ).also {
-            if (kind == "manual") {
-                // The selector only needs state and identity for this regression case.
-                CopyToSmbScheduler.manualRunTag(1234L)
-            }
-        }
+        WorkInfo.Builder(UUID.nameUUIDFromBytes(kind.toByteArray()), emptyList())
+            .setState(state)
+            .build()
 }
