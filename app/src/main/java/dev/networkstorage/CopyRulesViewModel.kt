@@ -28,10 +28,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
-import javax.inject.Inject
 
 data class CopyRuleEditorState(val id: String? = null, val sourceTreeUri: String = "", val destinationPath: String = "", val includeSubfolders: Boolean = true, val conflictPolicy: CopyConflictPolicy = CopyConflictPolicy.KEEP_BOTH, val automaticCopyEnabled: Boolean = false, val networkPolicy: CopyNetworkPolicy = CopyNetworkPolicy.ANY_CONNECTED, val requiresCharging: Boolean = false, val requiresBatteryNotLow: Boolean = true, val requiresStorageNotLow: Boolean = true, val periodicIntervalMinutes: Long = 60L, val createdAt: Long = 0L)
 data class CopyExecutionUiState(val state: WorkInfo.State, val automatic: Boolean, val copied: Int = 0, val skipped: Int = 0, val failed: Int = 0, val completed: Int = 0, val total: Int = 0, val currentSourcePath: String = "", val runAttemptCount: Int = 0)
@@ -52,7 +52,10 @@ class CopyRulesViewModel @Inject constructor(application: Application, private v
     private val activityRuleId = MutableStateFlow<String?>(null)
     private val workManager = WorkManager.getInstance(application)
     val rules = connectionId.flatMapLatest { id -> if (id == null) flowOf(emptyList()) else persistence.observeRules(id) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-    val executionStates = rules.flatMapLatest { currentRules -> if (currentRules.isEmpty()) flowOf(emptyMap()) else combine(currentRules.map { rule -> observeExecution(rule).let { flow -> flow } }) { pairs -> pairs.toMap() } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+    val executionStates = rules.flatMapLatest { currentRules ->
+        if (currentRules.isEmpty()) flowOf(emptyMap())
+        else combine(currentRules.map { rule -> observeExecution(rule).map { state -> rule.id to state } }) { pairs -> pairs.toMap() }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
     val recentActivity = activityRuleId.flatMapLatest { id -> if (id == null) flowOf(emptyList<CopyHistoryEntity>()) else persistence.observeRecentHistory(id) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val selectedActivityRuleId = activityRuleId
     val editor = MutableStateFlow<CopyRuleEditorState?>(null)
