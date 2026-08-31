@@ -60,7 +60,7 @@ class CopyDryRunPlanner @Inject constructor(
     ): CopyDryRunItem {
         val destination = CopyDestinationPath.normalize(destinationDirectory)
         val originalPath = CopyDestinationPath.join(destination, source.relativePath)
-        val sourceDigest = source.openInput().use(::hash)
+        val sourceDigest: DigestResult = source.openInput().use { input: InputStream -> hash(input) }
         require(sourceDigest.bytes == source.size) { "Source size changed while preparing preview" }
 
         val originalExists = copyClient.exists(connection, credential(connection), originalPath)
@@ -123,7 +123,7 @@ class CopyDryRunPlanner @Inject constructor(
     }
 
     private suspend fun remoteDigest(connection: ConnectionConfig, path: String): DigestResult =
-        readClient.openRead(connection, credential(connection), path).use { hash(it.input) }
+        readClient.openRead(connection, credential(connection), path).use { stream -> hash(stream.input) }
 
     private fun credential(connection: ConnectionConfig) =
         requireNotNull(credentialStore.get(connection.id)) { "Credential unavailable" }

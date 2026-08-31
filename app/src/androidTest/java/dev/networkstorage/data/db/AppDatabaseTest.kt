@@ -133,19 +133,25 @@ class AppDatabaseTest {
 
     @Test fun cacheLimitPersistsAsLongBytes() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val repository = SettingsRepository(context)
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries().build()
+        val repository = SettingsRepository(context, db.dao())
         repository.setCacheLimitBytes(20L * SettingsRepository.BYTES_PER_GIB)
-        assertTrue(SettingsRepository(context).cacheLimitBytes.first() == 20L * SettingsRepository.BYTES_PER_GIB)
+        assertTrue(SettingsRepository(context, db.dao()).cacheLimitBytes.first() == 20L * SettingsRepository.BYTES_PER_GIB)
+        db.close()
     }
 
     @Test fun storageRootsPersistAndRejectSameOrNestedTrees() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val repository = SettingsRepository(context)
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries().build()
+        val repository = SettingsRepository(context, db.dao())
         val cache = "content://step4-cache/tree/root"
         repository.setStorageRoot(StorageRootKind.CACHE, cache)
-        assertTrue(SettingsRepository(context).cacheRootUri.first() == cache)
+        assertTrue(SettingsRepository(context, db.dao()).cacheRootUri.first() == cache)
         assertTrue(runCatching { repository.setStorageRoot(StorageRootKind.MIRROR, cache) }.isFailure)
         assertTrue(runCatching { repository.setStorageRoot(StorageRootKind.MIRROR, "content://step4-cache/tree/root%2Fmirror") }.isFailure)
+        db.close()
     }
 
     @Test fun externalOpenIntentUsesMimeAndReadOnlyGrant() {
