@@ -16,56 +16,29 @@ import kotlin.coroutines.coroutineContext
 
 sealed interface TreeCopyFileOutcome {
     val sourceRelativePath: String
-
-    data class Success(
-        override val sourceRelativePath: String,
-        val result: CopyFileResult,
-    ) : TreeCopyFileOutcome
-
-    data class Failed(
-        override val sourceRelativePath: String,
-        val error: Throwable,
-    ) : TreeCopyFileOutcome
+    data class Success(override val sourceRelativePath: String, val result: CopyFileResult) : TreeCopyFileOutcome
+    data class Failed(override val sourceRelativePath: String, val error: Throwable) : TreeCopyFileOutcome
 }
 
 data class TreeCopyProgress(
-    val completedCount: Int,
-    val totalCount: Int,
-    val copiedCount: Int,
-    val skippedCount: Int,
-    val failureCount: Int,
-    val currentSourceRelativePath: String,
+    val completedCount: Int, val totalCount: Int, val copiedCount: Int, val skippedCount: Int,
+    val failureCount: Int, val currentSourceRelativePath: String,
 ) {
     companion object {
-        fun from(
-            outcomes: List<TreeCopyFileOutcome>,
-            totalCount: Int,
-            currentSourceRelativePath: String = outcomes.lastOrNull()?.sourceRelativePath.orEmpty(),
-        ) = TreeCopyProgress(
-            completedCount = outcomes.size,
-            totalCount = totalCount,
-            copiedCount = outcomes.count {
-                it is TreeCopyFileOutcome.Success && it.result.status == CopyFileStatus.COPIED
-            },
-            skippedCount = outcomes.count {
-                it is TreeCopyFileOutcome.Success && it.result.status != CopyFileStatus.COPIED
-            },
-            failureCount = outcomes.count { it is TreeCopyFileOutcome.Failed },
-            currentSourceRelativePath = currentSourceRelativePath,
-        )
+        fun from(outcomes: List<TreeCopyFileOutcome>, totalCount: Int, currentSourceRelativePath: String = outcomes.lastOrNull()?.sourceRelativePath.orEmpty()) =
+            TreeCopyProgress(
+                outcomes.size, totalCount,
+                outcomes.count { it is TreeCopyFileOutcome.Success && it.result.status == CopyFileStatus.COPIED },
+                outcomes.count { it is TreeCopyFileOutcome.Success && it.result.status != CopyFileStatus.COPIED },
+                outcomes.count { it is TreeCopyFileOutcome.Failed }, currentSourceRelativePath,
+            )
     }
 }
 
-data class TreeCopyResult(
-    val files: List<TreeCopyFileOutcome>,
-) {
+data class TreeCopyResult(val files: List<TreeCopyFileOutcome>) {
     val successCount: Int get() = files.count { it is TreeCopyFileOutcome.Success }
-    val copiedCount: Int get() = files.count {
-        it is TreeCopyFileOutcome.Success && it.result.status == CopyFileStatus.COPIED
-    }
-    val skippedCount: Int get() = files.count {
-        it is TreeCopyFileOutcome.Success && it.result.status != CopyFileStatus.COPIED
-    }
+    val copiedCount: Int get() = files.count { it is TreeCopyFileOutcome.Success && it.result.status == CopyFileStatus.COPIED }
+    val skippedCount: Int get() = files.count { it is TreeCopyFileOutcome.Success && it.result.status != CopyFileStatus.COPIED }
     val failureCount: Int get() = files.count { it is TreeCopyFileOutcome.Failed }
 }
 
@@ -84,10 +57,14 @@ class CopyToSmbTreeExecutor @Inject constructor(
         operationId: String,
         completedAt: () -> Long = System::currentTimeMillis,
         onProgress: suspend (TreeCopyProgress) -> Unit = {},
+        onlyRelativePaths: Set<String>? = null,
     ): TreeCopyResult {
         require(ruleId.isNotBlank()) { "Rule ID must not be blank" }
         require(operationId.isNotBlank()) { "Operation ID must not be blank" }
-        val sources = sourceTree.listFiles(sourceTreeUri, includeSubfolders)
+        val listedSources = sourceTree.listFiles(sourceTreeUri, includeSubfolders)
+        val sources = onlyRelativePaths?.let { requested ->
+            listedSources.filter { it.relativePath in requested }
+        } ?: listedSources
         val outcomes = ArrayList<TreeCopyFileOutcome>(sources.size)
 
         onProgress(TreeCopyProgress.from(outcomes, sources.size))
@@ -96,58 +73,24 @@ class CopyToSmbTreeExecutor @Inject constructor(
             val fileOperationId = "$operationId-$index"
             val expectedDestination = CopyDestinationPath.join(destinationDirectory, source.relativePath)
             try {
-                val result = orchestrator.copyFile(
-                    connection = connection,
-                    destinationDirectory = destinationDirectory,
-                    source = source,
-                    conflictPolicy = conflictPolicy,
-                    operationId = fileOperationId,
-                )
-                persistence.recordResult(
-                    operationId = operationId,
-                    ruleId = ruleId,
-                    connectionId = connection.id,
-                    sourceRelativePath = source.relativePath,
-                    result = result,
-                    completedAt = completedAt(),
-                )
+                val result = orchestrator.copyFile(connection, destinationDirectory, source, conflictPolicy, fileOperationId)
+                persistence.recordResult(operationId, ruleId, connection.id, source.relativePath, result, completedAt())
                 outcomes += TreeCopyFileOutcome.Success(source.relativePath, result)
             } catch (error: CancellationException) {
                 withContext(NonCancellable) {
                     runCatching {
-                        persistence.recordFailure(
-                            operationId = operationId,
-                            ruleId = ruleId,
-                            connectionId = connection.id,
-                            sourceRelativePath = source.relativePath,
-                            destinationRelativePath = expectedDestination,
-                            sourceSize = source.size,
-                            status = CopyHistoryStatus.CANCELLED,
-                            errorCode = CopyErrorCode.CANCELLED,
-                            completedAt = completedAt(),
-                        )
+                        persistence.recordFailure(operationId, ruleId, connection.id, source.relativePath, expectedDestination, source.size, CopyHistoryStatus.CANCELLED, CopyErrorCode.CANCELLED, completedAt())
                     }.onFailure { historyError -> error.addSuppressed(historyError) }
                 }
                 throw error
             } catch (error: Throwable) {
                 runCatching {
-                    persistence.recordFailure(
-                        operationId = operationId,
-                        ruleId = ruleId,
-                        connectionId = connection.id,
-                        sourceRelativePath = source.relativePath,
-                        destinationRelativePath = expectedDestination,
-                        sourceSize = source.size,
-                        status = CopyHistoryStatus.FAILED,
-                        errorCode = safeErrorCode(error),
-                        completedAt = completedAt(),
-                    )
+                    persistence.recordFailure(operationId, ruleId, connection.id, source.relativePath, expectedDestination, source.size, CopyHistoryStatus.FAILED, safeErrorCode(error), completedAt())
                 }.onFailure { historyError -> error.addSuppressed(historyError) }
                 outcomes += TreeCopyFileOutcome.Failed(source.relativePath, error)
             }
             onProgress(TreeCopyProgress.from(outcomes, sources.size, source.relativePath))
         }
-
         return TreeCopyResult(outcomes)
     }
 
@@ -156,11 +99,7 @@ class CopyToSmbTreeExecutor @Inject constructor(
         return when (error) {
             is CancellationException -> CopyErrorCode.CANCELLED
             is FileNotFoundException, is SecurityException -> CopyErrorCode.SOURCE_UNAVAILABLE
-            is CopyIntegrityException -> if (error.message?.contains("SHA-256") == true) {
-                CopyErrorCode.HASH_MISMATCH
-            } else {
-                CopyErrorCode.SIZE_MISMATCH
-            }
+            is CopyIntegrityException -> if (error.message?.contains("SHA-256") == true) CopyErrorCode.HASH_MISMATCH else CopyErrorCode.SIZE_MISMATCH
             is SmbFailure -> when (error.category) {
                 NetworkError.AUTHENTICATION -> CopyErrorCode.AUTHENTICATION
                 NetworkError.HOST_NOT_FOUND -> CopyErrorCode.HOST_NOT_FOUND
