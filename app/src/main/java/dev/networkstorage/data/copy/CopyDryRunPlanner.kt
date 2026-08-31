@@ -60,7 +60,7 @@ class CopyDryRunPlanner @Inject constructor(
     ): CopyDryRunItem {
         val destination = CopyDestinationPath.normalize(destinationDirectory)
         val originalPath = CopyDestinationPath.join(destination, source.relativePath)
-        val sourceDigest = source.openInput().use { input -> hash(input) }
+        val sourceDigest: DigestResult = source.openInput().use { input: InputStream -> hash(input) }
         require(sourceDigest.bytes == source.size) { "Source size changed while preparing preview" }
 
         val originalExists = copyClient.exists(connection, credential(connection), originalPath)
