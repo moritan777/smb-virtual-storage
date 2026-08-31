@@ -37,6 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.work.WorkInfo
 import dev.networkstorage.data.copy.CopyConflictPolicy
+import dev.networkstorage.data.copy.CopyDecision
+import dev.networkstorage.data.copy.CopyDryRunResult
 import dev.networkstorage.data.db.ConnectionSummary
 import dev.networkstorage.data.db.CopyHistoryEntity
 import dev.networkstorage.data.db.CopyHistoryStatus
@@ -57,6 +59,7 @@ internal fun CopyRulesScreen(
     val editor by viewModel.editor.collectAsState()
     val selectedActivityRuleId by viewModel.selectedActivityRuleId.collectAsState()
     val recentActivity by viewModel.recentActivity.collectAsState()
+    val preview by viewModel.preview.collectAsState()
     val message by viewModel.message.collectAsState()
     LaunchedEffect(connection.connection.id) { viewModel.setConnection(connection.connection.id) }
     LaunchedEffect(editor != null) { onEditorVisibilityChange(editor != null) }
@@ -66,7 +69,11 @@ internal fun CopyRulesScreen(
         CopyRuleEditorScreen(viewModel, connection.connection.name, editor!!)
         return
     }
-
+    if (preview.ruleId != null) {
+        val rule = rules.firstOrNull { it.id == preview.ruleId }
+        CopyPreviewScreen(rule, preview, viewModel)
+        return
+    }
     if (selectedActivityRuleId != null) {
         val rule = rules.firstOrNull { it.id == selectedActivityRuleId }
         CopyRecentActivityScreen(rule = rule, entries = recentActivity, onBack = viewModel::hideActivity)
@@ -107,11 +114,7 @@ internal fun CopyRulesScreen(
 private fun CopyRuleCard(rule: CopyRuleEntity, execution: CopyExecutionUiState?, viewModel: CopyRulesViewModel) {
     val busy = execution?.state in setOf(WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED, WorkInfo.State.RUNNING)
     val manualBusy = busy && execution?.automatic == false
-    ElevatedCard(
-        Modifier.fillMaxWidth(),
-        shape = SectionShape,
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) {
+    ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape, colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(friendlyCopySource(rule.sourceTreeUri), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("→ ${rule.destinationPath.ifBlank { "SMB root" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -127,6 +130,7 @@ private fun CopyRuleCard(rule: CopyRuleEntity, execution: CopyExecutionUiState?,
                 } else {
                     Button(onClick = { viewModel.copyNow(rule) }, enabled = !busy) { Text(if (busy) "Working…" else "Copy now") }
                 }
+                OutlinedButton(onClick = { viewModel.previewRule(rule) }, enabled = !busy) { Text("Preview") }
                 OutlinedButton(onClick = { viewModel.showActivity(rule) }) { Text("Activity") }
                 OutlinedButton(onClick = { viewModel.editRule(rule) }, enabled = !busy) { Text("Edit") }
                 TextButton(onClick = { viewModel.deleteRule(rule) }, enabled = !busy) { Text("Delete") }
@@ -148,37 +152,90 @@ private fun CopyExecutionStatus(value: CopyExecutionUiState) {
             val fileProgress = if (value.total > 0) " • ${value.completed}/${value.total} files" else ""
             Text("$source copy running$fileProgress$retry", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            if (value.currentSourcePath.isNotBlank()) {
-                Text(
-                    value.currentSourcePath,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Text(
-                "${value.copied} copied • ${value.skipped} skipped • ${value.failed} failed",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (value.failed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (value.currentSourcePath.isNotBlank()) Text(value.currentSourcePath, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${value.copied} copied • ${value.skipped} skipped • ${value.failed} failed", style = MaterialTheme.typography.labelSmall, color = if (value.failed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        WorkInfo.State.SUCCEEDED -> Text(
-            "Last copy: ${value.copied} copied • ${value.skipped} skipped • ${value.failed} failed",
-            style = MaterialTheme.typography.bodySmall,
-            color = if (value.failed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        WorkInfo.State.SUCCEEDED -> Text("Last copy: ${value.copied} copied • ${value.skipped} skipped • ${value.failed} failed", style = MaterialTheme.typography.bodySmall, color = if (value.failed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
         WorkInfo.State.FAILED -> Text("Last copy failed • see Activity", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         WorkInfo.State.CANCELLED -> Text("Last copy cancelled", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
-private fun CopyRecentActivityScreen(
-    rule: CopyRuleEntity?,
-    entries: List<CopyHistoryEntity>,
-    onBack: () -> Unit,
-) {
+private fun CopyPreviewScreen(rule: CopyRuleEntity?, state: CopyPreviewState, viewModel: CopyRulesViewModel) {
+    val result = state.result
+    Column(Modifier.fillMaxSize().padding(horizontal = ScreenPadding)) {
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            TextButton(onClick = viewModel::clearPreview) { Text("←") }
+            Column(Modifier.weight(1f)) {
+                Text("Copy preview", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                Text(rule?.let { friendlyCopySource(it.sourceTreeUri) } ?: "Copy rule", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (result != null) FilledTonalButton(onClick = { viewModel.copyNow(rule!!) }) { Text("Copy now") }
+        }
+        if (state.loading) {
+            Spacer(Modifier.height(12.dp))
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text("Inspecting source and SMB destinations…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            return
+        }
+        state.error?.let {
+            Spacer(Modifier.height(8.dp))
+            ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape) { Text(it, Modifier.padding(14.dp), color = MaterialTheme.colorScheme.error) }
+            return
+        }
+        result?.let { CopyPreviewContent(it) }
+    }
+}
+
+@Composable
+private fun CopyPreviewContent(result: CopyDryRunResult) {
+    val s = result.summary
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        item {
+            ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Planned operation", fontWeight = FontWeight.SemiBold)
+                    Text("${s.total} files • ${s.plannedWrites} writes • ${s.unchangedCount + s.reuseExistingCount} reused/skipped • ${s.failedCount} unable to determine", style = MaterialTheme.typography.bodyMedium)
+                    Text("New ${s.newCount} • Keep both ${s.keepBothCount} • Replace ${s.replaceCount} • Unchanged ${s.unchangedCount} • Reuse existing ${s.reuseExistingCount}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Preview performs no SMB writes or deletions. A concurrent SMB change can still alter the final result.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        items(result.items, key = { it.sourceRelativePath }) { item ->
+            ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape, colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(item.decision?.let(::copyDecisionLabel) ?: "Unable to determine", fontWeight = FontWeight.SemiBold, color = item.decision?.let(::copyDecisionColor) ?: MaterialTheme.colorScheme.error)
+                        Text(formatBytes(item.sourceSize), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(item.sourceRelativePath, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("→ ${item.destinationRelativePath}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(item.reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun copyDecisionColor(decision: CopyDecision) = when (decision) {
+    CopyDecision.NEW -> MaterialTheme.colorScheme.primary
+    CopyDecision.UNCHANGED, CopyDecision.REUSE_EXISTING -> MaterialTheme.colorScheme.secondary
+    CopyDecision.KEEP_BOTH, CopyDecision.REPLACE -> MaterialTheme.colorScheme.tertiary
+}
+
+private fun copyDecisionLabel(decision: CopyDecision) = when (decision) {
+    CopyDecision.NEW -> "New"
+    CopyDecision.UNCHANGED -> "Unchanged • skip"
+    CopyDecision.KEEP_BOTH -> "Keep both"
+    CopyDecision.REPLACE -> "Replace + backup"
+    CopyDecision.REUSE_EXISTING -> "Reuse existing"
+}
+
+@Composable
+private fun CopyRecentActivityScreen(rule: CopyRuleEntity?, entries: List<CopyHistoryEntity>, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(horizontal = ScreenPadding)) {
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -198,9 +255,7 @@ private fun CopyRecentActivityScreen(
                 }
             }
         } else {
-            LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(entries, key = { it.id }) { entry -> CopyActivityCard(entry) }
-            }
+            LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) { items(entries, key = { it.id }) { entry -> CopyActivityCard(entry) } }
         }
     }
 }
@@ -271,14 +326,8 @@ private fun CopyRuleEditorScreen(viewModel: CopyRulesViewModel, connectionName: 
         if (state.automaticCopyEnabled) {
             item {
                 Text("Interval", style = MaterialTheme.typography.labelMedium)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf(15L, 60L, 360L, 1440L).forEach { minutes -> ChoiceButton(copyIntervalLabel(minutes), state.periodicIntervalMinutes == minutes, Modifier.weight(1f)) { viewModel.updateEditor(state.copy(periodicIntervalMinutes = minutes)) } }
-                }
-                Text(
-                    "Automatic copy runs periodically, but Android WorkManager decides the exact execution time. The selected interval is not an exact clock schedule.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf(15L, 60L, 360L, 1440L).forEach { minutes -> ChoiceButton(copyIntervalLabel(minutes), state.periodicIntervalMinutes == minutes, Modifier.weight(1f)) { viewModel.updateEditor(state.copy(periodicIntervalMinutes = minutes)) } } }
+                Text("Automatic copy runs periodically, but Android WorkManager decides the exact execution time. The selected interval is not an exact clock schedule.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
                 Text("Network", style = MaterialTheme.typography.labelMedium)
@@ -292,10 +341,7 @@ private fun CopyRuleEditorScreen(viewModel: CopyRulesViewModel, connectionName: 
             item { ToggleRow("Storage not low", state.requiresStorageNotLow) { viewModel.updateEditor(state.copy(requiresStorageNotLow = it)) } }
         }
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = viewModel::dismissEditor) { Text("Cancel") }
-                Button(onClick = viewModel::saveRule, enabled = state.sourceTreeUri.isNotBlank()) { Text("Save") }
-            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = viewModel::dismissEditor) { Text("Cancel") }; Button(onClick = viewModel::saveRule, enabled = state.sourceTreeUri.isNotBlank()) { Text("Save") } }
             Spacer(Modifier.height(12.dp))
         }
     }
@@ -303,16 +349,12 @@ private fun CopyRuleEditorScreen(viewModel: CopyRulesViewModel, connectionName: 
 
 @Composable
 private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, style = MaterialTheme.typography.bodyMedium); Switch(checked = checked, onCheckedChange = onCheckedChange) }
 }
 
 @Composable
 private fun ChoiceButton(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    if (selected) FilledTonalButton(onClick = onClick, modifier = modifier) { Text(label) }
-    else OutlinedButton(onClick = onClick, modifier = modifier) { Text(label) }
+    if (selected) FilledTonalButton(onClick = onClick, modifier = modifier) { Text(label) } else OutlinedButton(onClick = onClick, modifier = modifier) { Text(label) }
 }
 
 private fun friendlyCopySource(value: String): String {
