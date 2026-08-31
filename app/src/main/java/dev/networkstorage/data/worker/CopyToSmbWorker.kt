@@ -32,7 +32,7 @@ class CopyToSmbWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         val ruleId = inputData.getString(KEY_RULE_ID)?.takeIf { it.isNotBlank() } ?: return Result.failure()
         val trigger = inputData.getString(KEY_TRIGGER) ?: TRIGGER_MANUAL
-        val onlyPaths = inputData.getStringArray(KEY_ONLY_PATHS)?.toSet()?.filter { it.isNotBlank() }
+        val onlyPaths = inputData.getStringArray(KEY_ONLY_PATHS)?.toSet()?.filter { it.isNotBlank() }?.toSet()
         return gate.withRuleLock(ruleId) {
             val rule = persistence.rule(ruleId) ?: return@withRuleLock Result.success()
             if (trigger == TRIGGER_PERIODIC && !rule.automaticCopyEnabled) return@withRuleLock Result.success()
@@ -45,7 +45,7 @@ class CopyToSmbWorker @AssistedInject constructor(
                     destinationDirectory = rule.destinationPath, includeSubfolders = rule.includeSubfolders,
                     conflictPolicy = rule.conflictPolicy, operationId = operationId,
                     onlyRelativePaths = onlyPaths,
-                    onProgress = { setProgress(progressData(operationId, it)) },
+                    onProgress = { progress -> setProgress(progressData(operationId, progress)) },
                 )
                 val counts = Data.Builder()
                     .putInt(KEY_SUCCESS_COUNT, result.successCount).putInt(KEY_COPIED_COUNT, result.copiedCount)
@@ -55,9 +55,8 @@ class CopyToSmbWorker @AssistedInject constructor(
                 setProgress(counts)
                 val retryablePaths = result.files.filterIsInstance<TreeCopyFileOutcome.Failed>()
                     .filter { isRetryable(it.error) }.map { it.sourceRelativePath }
-                if (retryablePaths.isNotEmpty() && result.successCount == 0) {
-                    Result.retry()
-                } else Result.success(counts)
+                if (retryablePaths.isNotEmpty() && result.successCount == 0) Result.retry()
+                else Result.success(counts)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
@@ -93,5 +92,6 @@ class CopyToSmbWorker @AssistedInject constructor(
         const val KEY_ONLY_PATHS = "copy_only_relative_paths"
         const val TRIGGER_MANUAL = "manual"
         const val TRIGGER_PERIODIC = "periodic"
+        const val TRIGGER_RETRY = "retry"
     }
 }
