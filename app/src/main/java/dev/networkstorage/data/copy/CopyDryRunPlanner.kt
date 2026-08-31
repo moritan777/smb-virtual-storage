@@ -6,6 +6,7 @@ import dev.networkstorage.data.smb.SmbCopyClient
 import dev.networkstorage.domain.ConnectionConfig
 import dev.networkstorage.domain.CopyDestinationPath
 import dev.networkstorage.domain.RemotePath
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import java.io.InputStream
 import java.security.MessageDigest
@@ -35,6 +36,8 @@ class CopyDryRunPlanner @Inject constructor(
             coroutineContext.ensureActive()
             try {
                 items += planFile(connection, destinationDirectory, source, conflictPolicy)
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Throwable) {
                 items += CopyDryRunItem(
                     sourceRelativePath = source.relativePath,
@@ -62,30 +65,45 @@ class CopyDryRunPlanner @Inject constructor(
 
         val originalExists = copyClient.exists(connection, credential(connection), originalPath)
         val originalDigest = if (originalExists) remoteDigest(connection, originalPath) else null
-        val originalSame = originalDigest?.let { it.bytes == source.size && it.sha256 == sourceDigest.sha256 } == true
-
-        if (originalSame) {
-            return item(source, originalPath, CopyDecision.UNCHANGED, sourceDigest.sha256, "Destination already has identical content")
-        }
 
         return when (conflictPolicy) {
-            CopyConflictPolicy.REPLACE_WITH_BACKUP -> item(
-                source,
-                originalPath,
-                if (originalExists) CopyDecision.REPLACE else CopyDecision.NEW,
-                sourceDigest.sha256,
-                if (originalExists) "Destination differs; existing file will be backed up before replacement" else "Destination does not exist",
-            )
+            CopyConflictPolicy.REPLACE_WITH_BACKUP -> {
+                val decision = CopyDecisionEngine.decide(
+                    CopyDecisionInput(
+                        originalExists = originalExists,
+                        originalSha256 = originalDigest?.sha256,
+                        sourceSha256 = sourceDigest.sha256,
+                        conflictPolicy = conflictPolicy,
+                    ),
+                    originalPath,
+                )
+                item(source, decision, sourceDigest.sha256)
+            }
             CopyConflictPolicy.KEEP_BOTH -> {
                 if (!originalExists) {
-                    item(source, originalPath, CopyDecision.NEW, sourceDigest.sha256, "Destination does not exist")
+                    val decision = CopyDecisionEngine.decide(
+                        CopyDecisionInput(false, null, sourceDigest.sha256, conflictPolicy), originalPath,
+                    )
+                    item(source, decision, sourceDigest.sha256)
+                } else if (originalDigest?.bytes == source.size && originalDigest.sha256 == sourceDigest.sha256) {
+                    val decision = CopyDecisionEngine.decide(
+                        CopyDecisionInput(true, originalDigest.sha256, sourceDigest.sha256, conflictPolicy), originalPath,
+                    )
+                    item(source, decision, sourceDigest.sha256)
                 } else {
                     val candidate = findNumberedDestination(connection, originalPath, sourceDigest.sha256)
-                    if (candidate.reusable != null) {
-                        item(source, candidate.reusable, CopyDecision.REUSE_EXISTING, sourceDigest.sha256, "An identical numbered copy already exists")
-                    } else {
-                        item(source, requireNotNull(candidate.available), CopyDecision.KEEP_BOTH, sourceDigest.sha256, "Destination differs; a numbered copy will be created")
-                    }
+                    val decision = CopyDecisionEngine.decide(
+                        CopyDecisionInput(
+                            originalExists = true,
+                            originalSha256 = originalDigest?.sha256,
+                            sourceSha256 = sourceDigest.sha256,
+                            conflictPolicy = conflictPolicy,
+                            reusableNumberedDestination = candidate.reusable,
+                            availableNumberedDestination = candidate.available,
+                        ),
+                        originalPath,
+                    )
+                    item(source, decision, sourceDigest.sha256)
                 }
             }
         }
@@ -125,8 +143,8 @@ class CopyDryRunPlanner @Inject constructor(
         return DigestResult(total, digest.digest().toHex())
     }
 
-    private fun item(source: CopySourceFile, destination: String, decision: CopyDecision, sha256: String, reason: String) =
-        CopyDryRunItem(source.relativePath, destination, decision, source.size, sha256, reason)
+    private fun item(source: CopySourceFile, decision: CopyDecisionResult, sha256: String) =
+        CopyDryRunItem(source.relativePath, decision.destinationRelativePath, decision.decision, source.size, sha256, decision.reason)
 
     private data class NumberedDestination(val reusable: String?, val available: String?)
     private data class DigestResult(val bytes: Long, val sha256: String)
