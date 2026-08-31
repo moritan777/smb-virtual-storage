@@ -37,32 +37,24 @@ object CopyDecisionEngine {
         }
 
         return when (input.conflictPolicy) {
-            CopyConflictPolicy.REPLACE_WITH_BACKUP -> {
-                CopyDecisionResult(
-                    if (input.originalExists) CopyDecision.REPLACE else CopyDecision.NEW,
-                    originalPath,
-                    if (input.originalExists) "Destination differs and will be replaced after backup" else "Destination does not exist",
+            CopyConflictPolicy.REPLACE_WITH_BACKUP -> CopyDecisionResult(
+                if (input.originalExists) CopyDecision.REPLACE else CopyDecision.NEW,
+                originalPath,
+                if (input.originalExists) "Destination differs and will be replaced after backup" else "Destination does not exist",
+            )
+            CopyConflictPolicy.KEEP_BOTH -> when {
+                input.reusableNumberedDestination != null -> CopyDecisionResult(
+                    CopyDecision.REUSE_EXISTING,
+                    input.reusableNumberedDestination,
+                    "A numbered destination with identical content already exists",
                 )
-            }
-            CopyConflictPolicy.KEEP_BOTH -> {
-                when {
-                    input.reusableNumberedDestination != null -> CopyDecisionResult(
-                        CopyDecision.REUSE_EXISTING,
-                        input.reusableNumberedDestination,
-                        "A numbered destination with identical content already exists",
-                    )
-                    input.originalExists && input.availableNumberedDestination != null -> CopyDecisionResult(
-                        CopyDecision.KEEP_BOTH,
-                        input.availableNumberedDestination,
-                        "Destination differs; a numbered copy will be created",
-                    )
-                    else -> CopyDecisionResult(
-                        CopyDecisionResult(CopyDecision.NEW, originalPath, "Destination does not exist")
-                            .decision,
-                        originalPath,
-                        "Destination does not exist",
-                    )
-                }
+                input.originalExists && input.availableNumberedDestination != null -> CopyDecisionResult(
+                    CopyDecision.KEEP_BOTH,
+                    input.availableNumberedDestination,
+                    "Destination differs; a numbered copy will be created",
+                )
+                !input.originalExists -> CopyDecisionResult(CopyDecision.NEW, originalPath, "Destination does not exist")
+                else -> error("Keep Both requires either an available or reusable numbered destination")
             }
         }
     }
