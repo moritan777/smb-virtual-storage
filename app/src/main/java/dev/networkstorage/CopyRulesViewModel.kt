@@ -10,14 +10,12 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.networkstorage.data.copy.CopyConflictPolicy
-import dev.networkstorage.data.copy.CopyDryRunItem
 import dev.networkstorage.data.copy.CopyDryRunPlanner
 import dev.networkstorage.data.copy.CopyDryRunResult
 import dev.networkstorage.data.copy.CopyPersistenceRepository
 import dev.networkstorage.data.copy.CopyToSmbScheduler
 import dev.networkstorage.data.copy.SafTreePermissionStore
 import dev.networkstorage.data.db.AppDao
-import dev.networkstorage.data.db.ConnectionSummary
 import dev.networkstorage.data.db.CopyHistoryEntity
 import dev.networkstorage.data.db.CopyNetworkPolicy
 import dev.networkstorage.data.db.CopyRuleEntity
@@ -85,6 +83,7 @@ private fun manualStatePriority(state: WorkInfo.State) = when (state) {
 }
 
 data class CopyPreviewState(
+    val ruleId: String? = null,
     val loading: Boolean = false,
     val result: CopyDryRunResult? = null,
     val error: String? = null,
@@ -104,7 +103,7 @@ class CopyRulesViewModel @Inject constructor(
     private val activityRuleId = MutableStateFlow<String?>(null)
     private val workManager = WorkManager.getInstance(application)
 
-    val rules = connectionId.flatMapLatest { id -> if (id == null) flowOf(emptyList<CopyRuleEntity>()) else persistence.observeRules(id) }
+    val rules = connectionId.flatMapLatest { id -> if (id == null) flowOf(emptyList()) else persistence.observeRules(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val executionStates = rules.flatMapLatest { currentRules ->
         if (currentRules.isEmpty()) flowOf(emptyMap()) else combine(currentRules.map { rule -> observeExecution(rule).map { rule.id to it } }) { pairs -> pairs.toMap() }
@@ -125,43 +124,26 @@ class CopyRulesViewModel @Inject constructor(
             val info = selected.info
             val data = if (info.state.isFinished) info.outputData else info.progress
             CopyExecutionUiState(
-                state = info.state,
-                automatic = selected.automatic,
-                copied = data.getInt(CopyToSmbWorker.KEY_COPIED_COUNT, 0),
-                skipped = data.getInt(CopyToSmbWorker.KEY_SKIPPED_COUNT, 0),
-                failed = data.getInt(CopyToSmbWorker.KEY_FAILURE_COUNT, 0),
-                completed = data.getInt(CopyToSmbWorker.KEY_COMPLETED_COUNT, 0),
-                total = data.getInt(CopyToSmbWorker.KEY_TOTAL_COUNT, 0),
-                currentSourcePath = data.getString(CopyToSmbWorker.KEY_CURRENT_SOURCE_PATH).orEmpty(),
+                state = info.state, automatic = selected.automatic,
+                copied = data.getInt(CopyToSmbWorker.KEY_COPIED_COUNT, 0), skipped = data.getInt(CopyToSmbWorker.KEY_SKIPPED_COUNT, 0),
+                failed = data.getInt(CopyToSmbWorker.KEY_FAILURE_COUNT, 0), completed = data.getInt(CopyToSmbWorker.KEY_COMPLETED_COUNT, 0),
+                total = data.getInt(CopyToSmbWorker.KEY_TOTAL_COUNT, 0), currentSourcePath = data.getString(CopyToSmbWorker.KEY_CURRENT_SOURCE_PATH).orEmpty(),
                 runAttemptCount = info.runAttemptCount,
             )
         }
     }
 
-    fun setConnection(id: String) {
-        if (connectionId.value != id) {
-            connectionId.value = id
-            activityRuleId.value = null
-            editor.value = null
-            preview.value = CopyPreviewState()
-        }
-    }
-
+    fun setConnection(id: String) { if (connectionId.value != id) { connectionId.value = id; activityRuleId.value = null; editor.value = null; preview.value = CopyPreviewState() } }
     fun newRule() { activityRuleId.value = null; editor.value = CopyRuleEditorState(); preview.value = CopyPreviewState() }
-
     fun editRule(rule: CopyRuleEntity) {
-        activityRuleId.value = null
-        preview.value = CopyPreviewState()
+        activityRuleId.value = null; preview.value = CopyPreviewState()
         editor.value = CopyRuleEditorState(
-            id = rule.id, sourceTreeUri = rule.sourceTreeUri, destinationPath = rule.destinationPath,
-            includeSubfolders = rule.includeSubfolders, conflictPolicy = rule.conflictPolicy,
-            automaticCopyEnabled = rule.automaticCopyEnabled, networkPolicy = rule.networkPolicy,
-            requiresCharging = rule.requiresCharging, requiresBatteryNotLow = rule.requiresBatteryNotLow,
-            requiresStorageNotLow = rule.requiresStorageNotLow, periodicIntervalMinutes = rule.periodicIntervalMinutes,
-            createdAt = rule.createdAt,
+            id = rule.id, sourceTreeUri = rule.sourceTreeUri, destinationPath = rule.destinationPath, includeSubfolders = rule.includeSubfolders,
+            conflictPolicy = rule.conflictPolicy, automaticCopyEnabled = rule.automaticCopyEnabled, networkPolicy = rule.networkPolicy,
+            requiresCharging = rule.requiresCharging, requiresBatteryNotLow = rule.requiresBatteryNotLow, requiresStorageNotLow = rule.requiresStorageNotLow,
+            periodicIntervalMinutes = rule.periodicIntervalMinutes, createdAt = rule.createdAt,
         )
     }
-
     fun showActivity(rule: CopyRuleEntity) { activityRuleId.value = rule.id }
     fun hideActivity() { activityRuleId.value = null }
     fun updateEditor(value: CopyRuleEditorState) { editor.value = value; preview.value = CopyPreviewState() }
@@ -172,62 +154,43 @@ class CopyRulesViewModel @Inject constructor(
             .onSuccess { editor.value = current.copy(sourceTreeUri = uri.toString()); preview.value = CopyPreviewState(); message.value = "Source folder selected" }
             .onFailure { message.value = "Could not retain read access to the source folder" }
     }
-
     fun dismissEditor() { editor.value = null; preview.value = CopyPreviewState() }
 
     fun previewRule(rule: CopyRuleEntity) {
         val connection = connectionId.value ?: return
-        preview.value = CopyPreviewState(loading = true)
+        preview.value = CopyPreviewState(ruleId = rule.id, loading = true)
         viewModelScope.launch {
             runCatching {
                 val entity = requireNotNull(dao.connection(connection)) { "Connection not found" }
                 dryRunPlanner.plan(
                     connection = ConnectionConfig(entity.id, entity.name, entity.host, entity.port, entity.share, entity.basePath, entity.username, entity.domain, entity.rootMode),
-                    sourceTreeUri = rule.sourceTreeUri,
-                    destinationDirectory = rule.destinationPath,
-                    includeSubfolders = rule.includeSubfolders,
-                    conflictPolicy = rule.conflictPolicy,
+                    sourceTreeUri = rule.sourceTreeUri, destinationDirectory = rule.destinationPath,
+                    includeSubfolders = rule.includeSubfolders, conflictPolicy = rule.conflictPolicy,
                 )
-            }.onSuccess { preview.value = CopyPreviewState(result = it) }
-                .onFailure { preview.value = CopyPreviewState(error = it.message?.takeIf(String::isNotBlank) ?: "Could not prepare preview") }
+            }.onSuccess { preview.value = CopyPreviewState(rule.id, result = it) }
+                .onFailure { preview.value = CopyPreviewState(rule.id, error = it.message?.takeIf(String::isNotBlank) ?: "Could not prepare preview") }
         }
     }
-
     fun clearPreview() { preview.value = CopyPreviewState() }
 
     fun saveRule() = viewModelScope.launch {
         val connection = connectionId.value ?: return@launch
         val value = editor.value ?: return@launch
         if (value.sourceTreeUri.isBlank()) { message.value = "Choose a source folder"; return@launch }
-        val now = System.currentTimeMillis()
-        val id = value.id ?: UUID.randomUUID().toString()
+        val now = System.currentTimeMillis(); val id = value.id ?: UUID.randomUUID().toString()
         runCatching {
-            val saved = persistence.saveRule(
-                id, connection, value.sourceTreeUri, value.destinationPath, value.includeSubfolders,
-                value.conflictPolicy, value.automaticCopyEnabled, value.networkPolicy, value.requiresCharging,
-                value.requiresBatteryNotLow, value.requiresStorageNotLow, value.periodicIntervalMinutes,
-                value.createdAt.takeIf { it > 0L } ?: now, now,
-            )
+            val saved = persistence.saveRule(id, connection, value.sourceTreeUri, value.destinationPath, value.includeSubfolders, value.conflictPolicy,
+                value.automaticCopyEnabled, value.networkPolicy, value.requiresCharging, value.requiresBatteryNotLow, value.requiresStorageNotLow,
+                value.periodicIntervalMinutes, value.createdAt.takeIf { it > 0L } ?: now, now)
             scheduler.schedule(saved)
         }.onSuccess { editor.value = null; preview.value = CopyPreviewState(); message.value = "Copy rule saved" }
             .onFailure { message.value = it.message?.takeIf(String::isNotBlank) ?: "Check the source folder and SMB destination path" }
     }
-
     fun deleteRule(rule: CopyRuleEntity) = viewModelScope.launch {
         scheduler.cancelManual(rule.id); scheduler.cancelPeriodic(rule.id)
-        runCatching { persistence.deleteRule(rule.id) }.onSuccess {
-            if (activityRuleId.value == rule.id) activityRuleId.value = null
-            message.value = "Copy rule deleted; source and SMB files were not changed"
-        }.onFailure { message.value = "Could not delete the copy rule" }
+        runCatching { persistence.deleteRule(rule.id) }.onSuccess { if (activityRuleId.value == rule.id) activityRuleId.value = null; message.value = "Copy rule deleted; source and SMB files were not changed" }
+            .onFailure { message.value = "Could not delete the copy rule" }
     }
-
-    fun copyNow(rule: CopyRuleEntity) {
-        runCatching { scheduler.enqueueManual(rule.id) }.onSuccess { message.value = "Copy queued" }
-            .onFailure { message.value = "Could not queue the copy" }
-    }
-
-    fun cancelManualCopy(rule: CopyRuleEntity) {
-        runCatching { scheduler.cancelManual(rule.id) }.onSuccess { message.value = "Manual copy cancellation requested" }
-            .onFailure { message.value = "Could not cancel the manual copy" }
-    }
+    fun copyNow(rule: CopyRuleEntity) { runCatching { scheduler.enqueueManual(rule.id) }.onSuccess { message.value = "Copy queued" }.onFailure { message.value = "Could not queue the copy" } }
+    fun cancelManualCopy(rule: CopyRuleEntity) { runCatching { scheduler.cancelManual(rule.id) }.onSuccess { message.value = "Manual copy cancellation requested" }.onFailure { message.value = "Could not cancel the manual copy" } }
 }
