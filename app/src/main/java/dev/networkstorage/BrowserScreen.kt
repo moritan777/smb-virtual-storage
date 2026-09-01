@@ -45,11 +45,11 @@ internal fun BrowserScreen(viewModel: MainViewModel) {
 
 @Composable
 private fun BrowserRow(item: BrowserItem, onClick: () -> Unit, onRemoveCache: () -> Unit) {
-    val missingColor = if (item.remoteExists) Color.Unspecified else MaterialTheme.colorScheme.error; var menu by remember(item.relativePath) { mutableStateOf(false) }; val hasCache = !item.isDirectory && (item.localState == LocalFileState.CACHED || item.localState == LocalFileState.REMOTE_UPDATED)
+    val missingColor = if (item.remoteExists) Color.Unspecified else MaterialTheme.colorScheme.error; var menu by remember(item.relativePath) { mutableStateOf(false) }; val hasCache = !item.isDirectory && (item.localState == LocalFileState.CACHED || item.localState == LocalFileState.REMOTE_UPDATED); val hasCachedDescendant = item.isDirectory && item.localState == LocalFileState.CACHED
     Surface(shape = RowShape, color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp)) {
             val icon = if (item.isDirectory) "📁" else BrowserPresentation.stateIcon(item.localState); Text(icon, style = MaterialTheme.typography.titleMedium); Spacer(Modifier.width(8.dp)); Column(Modifier.weight(1f)) { Text(item.name, color = missingColor, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis); if (!item.isDirectory) Text(formatBytes(item.size), color = if (item.remoteExists) MaterialTheme.colorScheme.onSurfaceVariant else missingColor, style = MaterialTheme.typography.bodySmall) }
-            if (item.isDirectory) Text("›", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) else if (hasCache) { TextButton(onClick = { menu = true }) { Text("⋮") }; DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) { DropdownMenuItem(text = { Text("Remove cached copy") }, onClick = { menu = false; onRemoveCache() }) } }
+            if (item.isDirectory) { if (hasCachedDescendant) Text("●", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary); Text("›", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) } else if (hasCache) { TextButton(onClick = { menu = true }) { Text("⋮") }; DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) { DropdownMenuItem(text = { Text("Remove cached copy") }, onClick = { menu = false; onRemoveCache() }) } }
         }
     }
 }
