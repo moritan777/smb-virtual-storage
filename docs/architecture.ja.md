@@ -2,33 +2,61 @@
 
 [English](architecture.md) | **日本語**
 
-Network Storage は、単一モジュールで構成された root 権限不要の Android アプリケーションです。設定された SMB サブツリーをインデックス化し、完全なローカルファイルを管理します。ファイルシステムをマウントしたり、`DocumentsProvider` として公開したりはしません。
+Network Storage は、単一モジュールで構成された root 権限不要の Android アプリケーションです。設定された SMB サブツリーを Room にインデックス化し、完全なローカルファイルを管理します。ファイルシステムをマウントしたり、`DocumentsProvider` として公開したりはしません。
 
 ## 境界と責務
 
-プレゼンテーション層は Compose と `MainViewModel` を使用し、接続編集、インデックス済みファイルの閲覧、設定、Worker の状態表示を担当します。Room は接続メタデータ、フォルダルール、インデックス済みエントリ、キャッシュメタデータ、永続的なスキャン実行情報を保存します。`IndexRepository` は幅優先スキャンを担当し、完全に成功したスキャンの後にのみ未確認行を整合します。
+Compose と ViewModel が接続編集、ローカルインデックスの閲覧、設定、Copy to SMB のルール編集・Preview・Activity・実行状態を担当します。Room は接続メタデータ、インデックス済みエントリ、キャッシュメタデータ、Copy to SMB のルールと履歴を保存します。
 
-SMB アクセスは読み取り専用の `SmbClient` インターフェースの背後に限定されています。`SmbjClient` は SMB2/3 の一覧取得と境界付き read handle を提供し、リモート側を変更する API は存在しません。パスワードはエクスポート不能な Android Keystore 鍵を用いて AES-GCM で暗号化され、Room とは分離して保持されます。接続ルートからの相対パスは、設定、一覧取得、ローカルストレージの各境界で正規化されます。
+SMB の通常アクセスは読み取り専用 `SmbClient` の背後に限定されています。Copy to SMB だけが別の `SmbCopyClient` を使用し、connection root 配下の狭い書き込み操作に限定されます。認証情報は Android Keystore で保護され、Room や Worker input/history には保存しません。connection-root-relative path は各境界で正規化します。
 
 ## インデックスとブラウザ
 
-Room は connection と parent をスコープとする `PagingSource` を公開するため、ブラウズ時には SMB へ直接アクセスしたり、インデックス全体をメモリ上でフィルタしたりせず、ローカルインデックスを参照します。失敗・キャンセル・オフラインによるスキャンでは、それまでのインデックスを保持します。NAS 側で削除されたエントリとの整合は、スキャンが正常完了した場合にのみ行われます。
+Room は connection と parent をスコープとする PagingSource を公開するため、ブラウズ時には SMB へ直接アクセスせずローカルインデックスを参照します。失敗・キャンセル・オフラインによるスキャンでは以前のインデックスを保持し、正常完了したスキャンだけが未確認エントリとの整合を確定します。
 
-Connection を削除するとローカルメタデータが連鎖削除され、保存済み認証情報も削除されます。Root index の削除では Connection 自体は保持されます。どちらの操作も読み取り専用 SMB 境界を越えてリモート側を変更しません。
+フォルダについては、配下の任意の深さに `CACHED` なファイルが存在する場合、ブラウザ用 projection がフォルダをローカルデータありとして表現します。UI のフォルダマーカーは「子孫にキャッシュがある」ことだけを示し、フォルダ全体がオフライン利用可能であることを意味しません。ファイル自身のキャッシュ状態は従来どおり remote metadata と local cache metadata の鮮度判定で決定します。
 
-## 設定とローカルストレージ
+## ローカルストレージ
 
-`SettingsRepository` は、`Long` 型のキャッシュ上限、Cache と Mirror それぞれの SAF tree URI、自動 Mirror 設定、最終実行状態を保持する Preferences DataStore の実装です。Provider の document ID を比較できる場合、Cache と Mirror に同一または入れ子になった tree を指定することは拒否されます。
+`CacheRepository` は完全なファイルを `.part` に境界付きコピーし、サイズを検証して正式ファイルへ昇格させ、その後キャッシュメタデータを確定します。有効なエントリは再利用でき、キャッシュ整理は LRU で行います。
 
-ON_DEMAND と MIRROR は意図的に異なるライフサイクルを持ちます。
+`MirrorRepository` は NAS メタデータと保持ファイルを比較し、NAS-only / NAS-newer を NAS → Device にコピーします。Mirror はキャッシュ整理の対象外で、local-only / local-newer を自動削除・上書きしません。
 
-- **ON_DEMAND:** `CacheRepository` は完全なファイルを `.part` へ境界付きコピーでダウンロードし、サイズを検証してから正式ファイルへ昇格させ、その後キャッシュメタデータを確定します。有効なエントリはアクセス時に更新されます。キャッシュ整理では、設定上限を守るため必要に応じて最終利用時刻の古いオンデマンドエントリから削除します。
-- **MIRROR:** `MirrorRepository` はインデックス化された NAS メタデータと端末上に保持されたファイルを比較し、NAS にのみ存在するもの、または NAS 側が新しいものだけをコピーします。Mirror ファイルはキャッシュ整理の対象外です。ローカルにのみ存在するファイルは保持され、ローカル側が新しいファイルは自動上書きされません。
+## Copy to SMB
 
-取得完了したローカルファイルは、MIME type に応じた `ACTION_VIEW` intent と読み取り専用 URI permission を使って開きます。正常に取得済みの Mirror ファイルはオフラインでも開けます。有効なオンデマンドキャッシュも、新たなネットワーク転送なしで再利用できます。
+Copy to SMB は Device → SMB の一方向コピーで、双方向同期ではありません。`CopyToSmbOrchestrator` と `CopyToSmbTreeExecutor` が実行を担当し、`CopyToSmbScheduler` / WorkManager が manual、periodic、retry の work を分離します。ルールごとの実行は直列化します。
 
-## Mirror 同期
+### Preview / decision planning
 
-手動 Mirror 同期と任意の自動 Mirror 同期は、同じ保守的な NAS → Device ポリシーを使用します。アップロード、双方向同期、転送レジュームはありません。転送が中断された場合は byte 0 から再開し、一時 `.part` ファイルを使用してサイズを検証し、失敗またはキャンセル時には部分データを削除します。
+`CopyDryRunPlanner` は source と既存 destination を必要に応じて SHA-256 で読み取り、SMB に書き込まずに実行判断を作ります。判断語彙は次の 5 種類です。
 
-自動同期は、ネットワーク接続あり・バッテリー低下なしの制約を持つ unique periodic WorkManager work として実行されます。`SettingsRepository` は有効／無効、実行間隔、最終実行結果を保存し、アプリ起動時にスケジュールを復元します。WorkManager の interval は最小実行間隔であり、正確な時刻を指定するものではありません。
+- `NEW`
+- `UNCHANGED`
+- `KEEP_BOTH`
+- `REPLACE`
+- `REUSE_EXISTING`
+
+同一 SHA-256 の既存 destination や numbered destination は再利用対象になり、毎回不要な重複を作らない方針です。Preview は dry-run なので create / write / rename / delete を行いません。
+
+### 安全な実行
+
+実際の Copy to SMB は `.part` 作成 → bounded copy → size / SHA-256 検証 → conflict policy 決定 → promotion → 必要な post-verification → history 記録の順です。`KEEP_BOTH` は numbered name を使い、`REPLACE_WITH_BACKUP` は `.network-storage-backup` に既存ファイルを退避してから置換します。バックアップと `.part` は通常ブラウザから除外します。
+
+### 進捗・履歴・キャンセル・再試行
+
+WorkManager progress を UI に反映し、total / completed / copied / skipped / failed / current source path / run attempt を表示します。手動コピーはキャンセルでき、失敗した source path だけを `onlyRelativePaths` として再実行する retry 経路もあります。retry は通常の manual / periodic work と別の unique work として扱います。
+
+## セキュリティ上の原則
+
+- Copy to SMB 以外の SMB 境界は読み取り専用です。
+- destination は connection root-relative で、root escape、absolute path、予約 backup tree の通常 destination を拒否します。
+- source は SAF tree の read permission を使い、source file を変更・削除しません。
+- deletion propagation は行いません。
+- `.part` は完成ファイルとして公開しません。
+- Preview は実際の write boundary を呼び出さず、読み取りだけで計画を作ります。
+
+## WorkManager
+
+Copy to SMB の automatic work はネットワーク、charging、battery、storage のルール条件に従います。WorkManager は正確な時計時刻を保証しません。manual / periodic / retry はそれぞれ unique work 名を持ち、起動中の work を UI から識別できるようにします。
+
+Mirror の periodic sync も WorkManager を使用しますが、Copy to SMB とは独立した work とストレージ境界です。
