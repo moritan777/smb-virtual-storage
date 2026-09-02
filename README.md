@@ -89,7 +89,7 @@ Instrumentation tests require a running emulator or connected device:
 
 ## Documentation
 
-See [`docs/architecture.md`](docs/architecture.md) for architecture and boundaries, [`docs/testing.md`](docs/testing.md) for the test strategy, [`docs/copy-to-smb-v1-audit.md`](docs/copy-to-smb-v1-audit.md) for the Copy to SMB implementation audit, and [`docs/v1-spec.md`](docs/v1-spec.md) for the V1 product specification.
+See [`docs/architecture.md`](docs/architecture.md) for architecture and boundaries, [`docs/testing.md`](docs/testing.md) for the test strategy, [`docs/copy-to-smb-v1-audit.md`](docs/copy-to-smb-v1-audit.md) for the Copy to SMB implementation audit, [`docs/v1-spec.md`](docs/v1-spec.md) for the V1 product specification, and [`docs/v1-implementation-addendum.md`](docs/v1-implementation-addendum.md) for current implementation extensions.
 
 ## License
 
