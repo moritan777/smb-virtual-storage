@@ -1,28 +1,46 @@
-# Testing strategy
+# Test strategy
 
 **English** | [日本語](testing.ja.md)
 
 ## Automated coverage
 
-Pure JVM tests cover remote-path normalization and traversal rejection, root-mode inheritance, update detection, `Long` byte accounting, settings validation, cache freshness and overflow-safe limits, bounded copy and size mismatch, user-facing network error mapping, Mirror comparison direction, and protection of local-only/local-newer files. The SMB boundary is injectable so fakes exercise listing, read failures, cancellation, and timeouts without real credentials.
+Pure JVM tests cover remote-path normalization and traversal rejection, root-mode inheritance, update detection, `Long` byte accounting, settings validation, cache freshness and limits, bounded copy and size mismatch handling, user-facing error mapping, Mirror comparison direction, local-only/local-newer protection, Copy to SMB decision logic, rule execution gating, source-relative paths, scheduler tags, and tree-copy progress.
 
-Room/device tests cover successful-scan reconciliation, connection cascades, root-index deletion, parent-scoped paging, Unicode names, credential replacement behavior, Preferences DataStore persistence, SAF tree separation, and read-only external-open intents. The exported Room schemas for versions 1, 2, and 3 are retained in `app/schemas`.
+The Copy to SMB decision engine is side-effect free and covers `NEW / UNCHANGED / KEEP_BOTH / REPLACE / REUSE_EXISTING`. Execution tests use replaceable SMB/SAF boundaries to cover `.part` handling, size and SHA-256 verification, promotion, conflict policies, backup handling, and cancellation.
 
-Cache and Mirror acceptance checks include `.part` cleanup, complete-size validation, LRU eviction after exceeding the cache limit, Mirror exclusion from cache cleanup, manual and periodic Mirror sync, and conservative handling of local-only/local-newer files. Offline checks verify that a failed scan preserves the prior index, completed Mirror files remain openable, and valid on-demand cache entries can be reused.
+Room / Android instrumentation covers successful scan reconciliation, Connection cascade deletion, root-index deletion, parent-scoped paging, Unicode filenames, credential replacement, Preferences DataStore, SAF tree separation, and read-only viewer intents. Folder cache-marker acceptance requires a folder with a cached descendant to expose the marker state and a folder with no cached descendant not to expose it.
 
-## Environment-dependent checks
+## Copy to SMB acceptance checks
 
-An emulator or device is required for Room instrumentation, Android Keystore behavior, SAF provider permissions, WorkManager scheduling/cancellation, external viewer grants, and real SMB2/3 interoperability. Real-NAS acceptance should cover a configured root that cannot escape, approximately 1,000 indexed entries, large files (including 2 GiB+ accounting), network interruption, and restart-from-zero behavior because transfer resume is not implemented.
+At minimum verify:
 
-Periodic synchronization should be tested as WorkManager constrained work rather than as an exact timer. Acceptance must confirm that it copies NAS-only/NAS-newer files in the NAS → Device direction, never uploads, does not overwrite local-newer files automatically, and retains local-only files.
+- Preview performs no SMB mutation.
+- An identical original destination becomes `Unchanged`.
+- `KEEP_BOTH` selects a valid numbered destination.
+- An identical numbered destination becomes `Reuse existing`.
+- `REPLACE_WITH_BACKUP` creates the backup before promotion.
+- `.part` data is removed on failure and cancellation.
+- Source files are never modified or deleted by copying.
+- Deletion is never propagated.
+- Manual, periodic, and retry work do not interfere across the same rule.
+- Activity exposes file-level results and error / backup information.
+- Failed source paths can be passed to a retry work request.
 
-## Database migrations
+## Environment-dependent verification
 
-The production database registers migrations 1→2 and 2→3 and exports all three schemas. A dedicated migration instrumentation test is still desirable; it should exercise the production migration objects with Room's `MigrationTestHelper` rather than duplicate their SQL in test code. Until those migration objects have a test-visible home in a separately approved production-code change, schema presence and normal instrumentation/database creation are the available checks.
+Room instrumentation, Android Keystore, SAF provider permissions, WorkManager scheduling/cancellation, viewer grants, and real SMB2/3 interoperability require an emulator or physical device.
+
+Real-NAS Copy to SMB acceptance should verify connection-root containment, the fact that Preview and execution are not a locked transaction, real `KEEP_BOTH` / `REPLACE_WITH_BACKUP` behavior, network interruption, large-file `Long` accounting, and `.part` cleanup after cancellation.
+
+Mirror acceptance should verify that only NAS-only / NAS-newer files are copied NAS → Device and that local-only / local-newer files are not deleted or automatically overwritten. Offline acceptance should verify preservation of the previous index and reuse of completed Mirror and valid ON_DEMAND cache data.
+
+## Database migration
+
+Keep production migrations aligned with the Room schemas under `app/schemas`. Prefer validating production migration objects with `MigrationTestHelper` rather than copying SQL into tests.
 
 ## Commands
 
-On Windows, run:
+On Windows:
 
 ```powershell
 .\gradlew.bat testDebugUnitTest
@@ -31,4 +49,10 @@ On Windows, run:
 .\gradlew.bat connectedDebugAndroidTest
 ```
 
-`connectedDebugAndroidTest` requires a running emulator or attached device. The repository currently has no Unix `gradlew` script; wrapper maintenance is intentionally handled separately.
+`connectedDebugAndroidTest` requires a running emulator or connected device. Install the debug APK with:
+
+```powershell
+.\gradlew.bat installDebug
+```
+
+The repository currently has no Unix `gradlew` script. Wrapper maintenance is intentionally separate from ordinary application changes.
