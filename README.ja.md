@@ -89,7 +89,7 @@ instrumentation test は起動済みのエミュレーターまたは接続済�
 
 ## ドキュメント
 
-設計・実装境界は [`docs/architecture.ja.md`](docs/architecture.ja.md)、テスト戦略は [`docs/testing.ja.md`](docs/testing.ja.md)、Copy to SMB の実装監査は [`docs/copy-to-smb-v1-audit.md`](docs/copy-to-smb-v1-audit.md)、V1 の製品仕様は [`docs/v1-spec.md`](docs/v1-spec.md) を参照してください。
+設計・実装境界は [`docs/architecture.ja.md`](docs/architecture.ja.md)、テスト戦略は [`docs/testing.ja.md`](docs/testing.ja.md)、Copy to SMB の実装監査は [`docs/copy-to-smb-v1-audit.md`](docs/copy-to-smb-v1-audit.md)、V1 の製品仕様は [`docs/v1-spec.md`](docs/v1-spec.md)、現在の V1 実装追加仕様は [`docs/v1-implementation-addendum.md`](docs/v1-implementation-addendum.md) を参照してください。
 
 ## ライセンス
 
