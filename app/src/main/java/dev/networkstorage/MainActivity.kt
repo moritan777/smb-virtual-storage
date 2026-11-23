@@ -66,7 +66,7 @@ private fun NetworkStorageScreen(viewModel: MainViewModel = hiltViewModel()) {
     val message by viewModel.message.collectAsState()
     var copyEditorVisible by remember { mutableStateOf(false) }
     BackHandler(enabled = screen == AppScreen.BROWSER) { viewModel.browserBack() }
-    BackHandler(enabled = screen == AppScreen.MIRROR) { viewModel.showConnections() }
+    BackHandler(enabled = screen == AppScreen.MIRROR || screen == AppScreen.BACKUP) { viewModel.showConnections() }
     BackHandler(enabled = screen == AppScreen.CONNECTION_EDIT) { viewModel.showConnections() }
 
     Scaffold(
@@ -75,6 +75,7 @@ private fun NetworkStorageScreen(viewModel: MainViewModel = hiltViewModel()) {
                 NavigationBar {
                     NavigationBarItem(selected = screen == AppScreen.CONNECTIONS, onClick = viewModel::showConnections, icon = { Text("▤") }, label = { Text("Connections") })
                     NavigationBarItem(selected = screen == AppScreen.BROWSER, onClick = { if (viewModel.selectedConnection.value != null) viewModel.screen.value = AppScreen.BROWSER }, icon = { Text("▱") }, label = { Text("Browser") })
+                    NavigationBarItem(selected = screen == AppScreen.BACKUP, onClick = viewModel::showBackupSettings, icon = { Text("⇧") }, label = { Text("Backup") })
                     NavigationBarItem(selected = screen == AppScreen.SETTINGS, onClick = viewModel::showSettings, icon = { Text("⚙") }, label = { Text("Settings") })
                 }
             }
@@ -87,6 +88,7 @@ private fun NetworkStorageScreen(viewModel: MainViewModel = hiltViewModel()) {
                 AppScreen.CONNECTION_EDIT -> ConnectionEditorScreen(viewModel)
                 AppScreen.BROWSER -> BrowserScreen(viewModel)
                 AppScreen.MIRROR -> SyncScreen(viewModel)
+                AppScreen.BACKUP -> BackupSettingsScreen(viewModel)
                 AppScreen.SETTINGS -> SettingsScreen(viewModel)
             }
         }
