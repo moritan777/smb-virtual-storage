@@ -40,6 +40,7 @@ class CopyPersistenceRepository @Inject constructor(
         requiresBatteryNotLow: Boolean,
         requiresStorageNotLow: Boolean,
         periodicIntervalMinutes: Long,
+        scheduledTimeMinutesOfDay: Int,
         createdAt: Long,
         updatedAt: Long,
     ): CopyRuleEntity {
@@ -47,15 +48,32 @@ class CopyPersistenceRepository @Inject constructor(
         require(connectionId.isNotBlank()) { "Connection ID must not be blank" }
         require(updatedAt >= createdAt) { "updatedAt must not precede createdAt" }
         require(periodicIntervalMinutes in SUPPORTED_INTERVALS) { "Unsupported periodic interval" }
+        require(scheduledTimeMinutesOfDay in 0..1439) { "Scheduled time must be within a day" }
         requirePersistedTreeUri(sourceTreeUri)
         sourceStorageGuard.requireSafe(sourceTreeUri)
         val value = CopyRuleEntity(
             id, connectionId, sourceTreeUri, CopyDestinationPath.normalize(destinationPath), includeSubfolders,
             conflictPolicy, automaticCopyEnabled, networkPolicy, requiresCharging, requiresBatteryNotLow,
-            requiresStorageNotLow, periodicIntervalMinutes, createdAt, updatedAt,
+            requiresStorageNotLow, periodicIntervalMinutes, scheduledTimeMinutesOfDay, createdAt, updatedAt,
         )
         dao.saveCopyRule(value)
         return value
+    }
+
+    suspend fun recordScheduleSkipped(
+        ruleId: String,
+        connectionId: String,
+        reasons: List<CopyErrorCode>,
+        completedAt: Long,
+    ) {
+        require(reasons.isNotEmpty())
+        val operationId = UUID.randomUUID().toString()
+        reasons.distinct().forEach { reason ->
+            saveHistory(
+                operationId, ruleId, connectionId, "Automatic backup", "", 0L, null,
+                CopyHistoryStatus.SKIPPED_CONDITION, reason, null, completedAt,
+            )
+        }
     }
 
     suspend fun deleteRule(ruleId: String) = dao.deleteCopyRule(ruleId)
