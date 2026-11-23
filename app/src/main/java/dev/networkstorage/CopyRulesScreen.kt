@@ -359,8 +359,6 @@ private fun CopyRuleEditorScreen(viewModel: CopyRulesViewModel, connectionName: 
                 }
             }
             item { ToggleRow("Require charging", state.requiresCharging) { viewModel.updateEditor(state.copy(requiresCharging = it)) } }
-            item { ToggleRow("Battery not low", state.requiresBatteryNotLow) { viewModel.updateEditor(state.copy(requiresBatteryNotLow = it)) } }
-            item { ToggleRow("Storage not low", state.requiresStorageNotLow) { viewModel.updateEditor(state.copy(requiresStorageNotLow = it)) } }
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = viewModel::dismissEditor) { Text("Cancel") }; Button(onClick = viewModel::saveRule, enabled = state.sourceTreeUri.isNotBlank()) { Text("Save") } }
