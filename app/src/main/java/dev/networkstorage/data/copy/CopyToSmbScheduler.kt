@@ -7,7 +7,6 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
-import dev.networkstorage.data.db.CopyNetworkPolicy
 import dev.networkstorage.data.db.CopyRuleEntity
 import dev.networkstorage.data.worker.CopyToSmbWorker
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -100,16 +99,9 @@ class CopyToSmbScheduler @Inject constructor(
             .setInitialDelay((scheduledAt - System.currentTimeMillis()).coerceAtLeast(0L), TimeUnit.MILLISECONDS)
             .setInputData(input(rule.id, CopyToSmbWorker.TRIGGER_SCHEDULED).toBuilder()
                 .putLong(CopyToSmbWorker.KEY_SCHEDULED_AT, scheduledAt).build())
-            .setConstraints(backgroundConstraints(rule))
+            .setConstraints(Constraints.Builder().build())
             .addTag(scheduleTag(rule.id))
             .build()
-
-    // Charging and Wi-Fi are deliberately checked by the worker at execution time, not as
-    // WorkManager constraints, so an unmet condition is recorded as a skipped run immediately.
-    private fun backgroundConstraints(rule: CopyRuleEntity) = Constraints.Builder()
-        .setRequiresBatteryNotLow(rule.requiresBatteryNotLow)
-        .setRequiresStorageNotLow(rule.requiresStorageNotLow)
-        .build()
 
     private fun nextScheduledAt(minutesOfDay: Int, nowMillis: Long): Long {
         val zone = ZoneId.systemDefault()
