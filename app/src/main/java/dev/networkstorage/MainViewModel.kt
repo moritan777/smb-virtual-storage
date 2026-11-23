@@ -53,7 +53,7 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 
-enum class AppScreen { CONNECTIONS, CONNECTION_EDIT, BROWSER, MIRROR, SETTINGS }
+enum class AppScreen { CONNECTIONS, CONNECTION_EDIT, BROWSER, MIRROR, BACKUP, SETTINGS }
 enum class LocalFileState { REMOTE_ONLY, DOWNLOADING, CACHED, REMOTE_UPDATED, FAILED }
 object BrowserPresentation {
     fun stateIcon(state: LocalFileState) = when (state) {
@@ -148,6 +148,7 @@ class MainViewModel @Inject constructor(
     }
     fun showConnections() { screen.value = AppScreen.CONNECTIONS }
     fun showSettings() { screen.value = AppScreen.SETTINGS }
+    fun showBackupSettings() { screen.value = AppScreen.BACKUP }
     fun openAddConnection() { editor.value = ConnectionEditorState(); screen.value = AppScreen.CONNECTION_EDIT }
     fun openEditConnection(summary: ConnectionSummary) { val c = summary.connection; editor.value = ConnectionEditorState(c.id, c.name, c.host, c.port.toString(), c.username, c.domain.orEmpty(), c.share, c.basePath, c.rootMode); screen.value = AppScreen.CONNECTION_EDIT }
     fun updateEditor(value: ConnectionEditorState) { editor.value = value }
