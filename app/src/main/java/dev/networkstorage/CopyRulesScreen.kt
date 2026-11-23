@@ -52,6 +52,7 @@ internal fun CopyRulesScreen(
     connection: ConnectionSummary,
     onBack: () -> Unit,
     onEditorVisibilityChange: (Boolean) -> Unit = {},
+    simpleMode: Boolean = false,
     viewModel: CopyRulesViewModel = hiltViewModel(),
 ) {
     val rules by viewModel.rules.collectAsState()
@@ -66,7 +67,7 @@ internal fun CopyRulesScreen(
     DisposableEffect(Unit) { onDispose { onEditorVisibilityChange(false) } }
 
     if (editor != null) {
-        CopyRuleEditorScreen(viewModel, connection.connection.name, editor!!)
+        if (simpleMode) BackupRuleEditorScreen(viewModel, editor!!) else CopyRuleEditorScreen(viewModel, connection.connection.name, editor!!)
         return
     }
     if (preview.ruleId != null) {
@@ -86,59 +87,76 @@ internal fun CopyRulesScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 TextButton(onClick = onBack) { Text("←") }
                 Column {
-                    Text("Copy to SMB", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                    Text(if (simpleMode) "Backup settings" else "Copy to SMB", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                     Text(connection.connection.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Button(onClick = viewModel::newRule) { Text("+ Rule") }
+            Button(onClick = viewModel::newRule) { Text(if (simpleMode) "+ Backup" else "+ Rule") }
         }
         message?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall) }
         Spacer(Modifier.height(8.dp))
         if (rules.isEmpty()) {
             ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("No Copy to SMB rules", fontWeight = FontWeight.SemiBold)
-                    Text("Choose an Android folder and copy its files into this SMB connection. Source files are never deleted or moved.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(onClick = viewModel::newRule) { Text("Create rule") }
+                    Text(if (simpleMode) "No backups configured" else "No Copy to SMB rules", fontWeight = FontWeight.SemiBold)
+                    Text(if (simpleMode) "Choose a phone folder and set when it should be backed up to this NAS. The original files stay on the phone." else "Choose an Android folder and copy its files into this SMB connection. Source files are never deleted or moved.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = viewModel::newRule) { Text(if (simpleMode) "Create backup" else "Create rule") }
                 }
             }
         } else {
             LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(rules, key = { it.id }) { rule -> CopyRuleCard(rule, executionStates[rule.id], viewModel) }
+                items(rules, key = { it.id }) { rule -> CopyRuleCard(rule, executionStates[rule.id], viewModel, simpleMode) }
             }
         }
     }
 }
 
 @Composable
-private fun CopyRuleCard(rule: CopyRuleEntity, execution: CopyExecutionUiState?, viewModel: CopyRulesViewModel) {
+private fun CopyRuleCard(rule: CopyRuleEntity, execution: CopyExecutionUiState?, viewModel: CopyRulesViewModel, simpleMode: Boolean) {
     val busy = execution?.state in setOf(WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED, WorkInfo.State.RUNNING)
     val manualBusy = busy && execution?.automatic == false
     ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape, colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(friendlyCopySource(rule.sourceTreeUri), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("→ ${rule.destinationPath.ifBlank { "SMB root" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(if (rule.conflictPolicy == CopyConflictPolicy.KEEP_BOTH) "Keep Both" else "Replace + backup", style = MaterialTheme.typography.labelMedium)
-                Text(if (rule.automaticCopyEnabled) "Auto • ${copyIntervalLabel(rule.periodicIntervalMinutes)}" else "Manual", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            }
-            execution?.let { CopyExecutionStatus(it) }
-            HorizontalDivider()
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (manualBusy) {
-                    OutlinedButton(onClick = { viewModel.cancelManualCopy(rule) }) { Text("Cancel") }
-                } else {
-                    Button(onClick = { viewModel.copyNow(rule) }, enabled = !busy) { Text(if (busy) "Working…" else "Copy now") }
+            Text("NAS folder: ${rule.destinationPath.ifBlank { "Connection root" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (simpleMode) {
+                Text(
+                    if (rule.automaticCopyEnabled) "Daily at ${copyTimeLabel(rule.scheduledTimeMinutesOfDay)}" else "Automatic backup off",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    "${if (rule.requiresCharging) "Charging required" else "Charging optional"} • ${when (rule.networkPolicy) { CopyNetworkPolicy.WIFI_ONLY -> "Wi-Fi"; CopyNetworkPolicy.UNMETERED_ONLY -> "Unmetered network"; else -> "Any network" }}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                execution?.let { CopyExecutionStatus(it) }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { viewModel.deleteRule(rule) }, enabled = !busy) { Text("Delete") }
+                    Button(onClick = { viewModel.editRule(rule) }, enabled = !busy) { Text("Edit backup") }
                 }
-                OutlinedButton(onClick = { viewModel.previewRule(rule) }, enabled = !busy) { Text("Preview") }
-                OutlinedButton(onClick = { viewModel.showActivity(rule) }) { Text("Activity") }
-                OutlinedButton(onClick = { viewModel.editRule(rule) }, enabled = !busy) { Text("Edit") }
-                TextButton(onClick = { viewModel.deleteRule(rule) }, enabled = !busy) { Text("Delete") }
+            } else {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(if (rule.conflictPolicy == CopyConflictPolicy.KEEP_BOTH) "Keep Both" else "Replace + backup", style = MaterialTheme.typography.labelMedium)
+                    Text(if (rule.automaticCopyEnabled) "Auto • ${copyTimeLabel(rule.scheduledTimeMinutesOfDay)}" else "Manual", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                }
+                execution?.let { CopyExecutionStatus(it) }
+                HorizontalDivider()
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (manualBusy) {
+                        OutlinedButton(onClick = { viewModel.cancelManualCopy(rule) }) { Text("Cancel") }
+                    } else {
+                        Button(onClick = { viewModel.copyNow(rule) }, enabled = !busy) { Text(if (busy) "Working…" else "Copy now") }
+                    }
+                    OutlinedButton(onClick = { viewModel.previewRule(rule) }, enabled = !busy) { Text("Preview") }
+                    OutlinedButton(onClick = { viewModel.showActivity(rule) }) { Text("Activity") }
+                    OutlinedButton(onClick = { viewModel.editRule(rule) }, enabled = !busy) { Text("Edit") }
+                    TextButton(onClick = { viewModel.deleteRule(rule) }, enabled = !busy) { Text("Delete") }
+                }
             }
         }
     }
 }
-
 @Composable
 private fun CopyExecutionStatus(value: CopyExecutionUiState) {
     val source = if (value.automatic) "Automatic" else "Manual"
@@ -268,10 +286,15 @@ private fun CopyActivityCard(entry: CopyHistoryEntity) {
                 Text(copyHistoryStatusLabel(entry.status), fontWeight = FontWeight.SemiBold, color = copyHistoryStatusColor(entry.status))
                 Text(DateFormat.getDateTimeInstance().format(Date(entry.completedAt)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(entry.sourceRelativePath, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text("→ ${entry.destinationRelativePath}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(formatBytes(entry.sourceSize), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            entry.errorCode?.let { Text("Error: ${it.name}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            if (entry.status == CopyHistoryStatus.SKIPPED_CONDITION) {
+                Text("Automatic backup", style = MaterialTheme.typography.bodyMedium)
+                Text("Reason: ${entry.errorCode?.let(::copyScheduleSkipReason) ?: "Condition not met"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Text(entry.sourceRelativePath, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text("→ ${entry.destinationRelativePath}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(formatBytes(entry.sourceSize), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                entry.errorCode?.let { Text("Error: ${it.name}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            }
             entry.backupRelativePath?.let { Text("Backup: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         }
     }
@@ -280,16 +303,87 @@ private fun CopyActivityCard(entry: CopyHistoryEntity) {
 @Composable
 private fun copyHistoryStatusColor(status: CopyHistoryStatus) = when (status) {
     CopyHistoryStatus.SUCCEEDED -> MaterialTheme.colorScheme.primary
-    CopyHistoryStatus.SKIPPED_IDENTICAL -> MaterialTheme.colorScheme.secondary
+    CopyHistoryStatus.SKIPPED_IDENTICAL, CopyHistoryStatus.SKIPPED_CONDITION -> MaterialTheme.colorScheme.secondary
     CopyHistoryStatus.FAILED -> MaterialTheme.colorScheme.error
     CopyHistoryStatus.CANCELLED -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+private fun copyScheduleSkipReason(code: dev.networkstorage.data.db.CopyErrorCode) = when (code) {
+    dev.networkstorage.data.db.CopyErrorCode.NOT_CHARGING -> "Device was not charging"
+    dev.networkstorage.data.db.CopyErrorCode.WIFI_NOT_CONNECTED -> "Wi-Fi was not connected"
+    dev.networkstorage.data.db.CopyErrorCode.NETWORK_NOT_CONNECTED -> "No network connection"
+    dev.networkstorage.data.db.CopyErrorCode.METERED_NETWORK -> "Network was metered"
+    else -> code.name
 }
 
 private fun copyHistoryStatusLabel(status: CopyHistoryStatus) = when (status) {
     CopyHistoryStatus.SUCCEEDED -> "Copied"
     CopyHistoryStatus.SKIPPED_IDENTICAL -> "Identical • skipped"
+    CopyHistoryStatus.SKIPPED_CONDITION -> "Automatic run • skipped"
     CopyHistoryStatus.FAILED -> "Failed"
     CopyHistoryStatus.CANCELLED -> "Cancelled"
+}
+
+@Composable
+private fun BackupRuleEditorScreen(viewModel: CopyRulesViewModel, state: CopyRuleEditorState) {
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let(viewModel::selectSourceTree) }
+    LazyColumn(Modifier.fillMaxSize().padding(horizontal = ScreenPadding), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item {
+            Spacer(Modifier.height(8.dp))
+            Text(if (state.id == null) "Create backup" else "Edit backup", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text("Choose what to back up and when. Advanced copy behavior keeps its safe defaults.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        item {
+            Text("Phone folder", style = MaterialTheme.typography.labelMedium)
+            Text(if (state.sourceTreeUri.isBlank()) "Not selected" else friendlyCopySource(state.sourceTreeUri), style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            OutlinedButton(onClick = { picker.launch(null) }, modifier = Modifier.fillMaxWidth()) { Text("Choose folder") }
+        }
+        item {
+            OutlinedTextField(
+                value = state.destinationPath,
+                onValueChange = { viewModel.updateEditor(state.copy(destinationPath = it)) },
+                label = { Text("NAS destination folder") },
+                placeholder = { Text("Blank = NAS root") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+        }
+        item { ToggleRow("Automatic daily backup", state.automaticCopyEnabled) { viewModel.updateEditor(state.copy(automaticCopyEnabled = it)) } }
+        if (state.automaticCopyEnabled) {
+            item {
+                OutlinedTextField(
+                    value = state.scheduledTime,
+                    onValueChange = { viewModel.updateEditor(state.copy(scheduledTime = it.take(5))) },
+                    label = { Text("Backup time (24-hour HH:mm)") },
+                    placeholder = { Text("04:00") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+            }
+            item {
+                Text("Run only when connected to", style = MaterialTheme.typography.labelMedium)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ChoiceButton("Any network", state.networkPolicy != CopyNetworkPolicy.WIFI_ONLY, Modifier.weight(1f)) {
+                        viewModel.updateEditor(state.copy(networkPolicy = CopyNetworkPolicy.ANY_CONNECTED))
+                    }
+                    ChoiceButton("Wi-Fi", state.networkPolicy == CopyNetworkPolicy.WIFI_ONLY, Modifier.weight(1f)) {
+                        viewModel.updateEditor(state.copy(networkPolicy = CopyNetworkPolicy.WIFI_ONLY))
+                    }
+                }
+            }
+            item { ToggleRow("Only while charging", state.requiresCharging) { viewModel.updateEditor(state.copy(requiresCharging = it)) } }
+            item {
+                Text("If a condition is not met at the scheduled time, that day's backup is skipped and the reason is saved in history.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = viewModel::dismissEditor) { Text("Cancel") }
+                Button(onClick = viewModel::saveRule, enabled = state.sourceTreeUri.isNotBlank()) { Text("Save backup") }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+    }
 }
 
 @Composable
@@ -325,20 +419,26 @@ private fun CopyRuleEditorScreen(viewModel: CopyRulesViewModel, connectionName: 
         item { ToggleRow("Automatic copy", state.automaticCopyEnabled) { viewModel.updateEditor(state.copy(automaticCopyEnabled = it)) } }
         if (state.automaticCopyEnabled) {
             item {
-                Text("Interval", style = MaterialTheme.typography.labelMedium)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf(15L, 60L, 360L, 1440L).forEach { minutes -> ChoiceButton(copyIntervalLabel(minutes), state.periodicIntervalMinutes == minutes, Modifier.weight(1f)) { viewModel.updateEditor(state.copy(periodicIntervalMinutes = minutes)) } } }
-                Text("Automatic copy runs periodically, but Android WorkManager decides the exact execution time. The selected interval is not an exact clock schedule.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Daily backup time", style = MaterialTheme.typography.labelMedium)
+                OutlinedTextField(
+                    value = state.scheduledTime,
+                    onValueChange = { viewModel.updateEditor(state.copy(scheduledTime = it.take(5))) },
+                    label = { Text("Time (24-hour HH:mm)") },
+                    placeholder = { Text("04:00") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+                Text("Runs once each day at the selected local time. Android may delay background execution; if charging or network conditions are not met when it starts, that run is skipped and recorded.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
                 Text("Network", style = MaterialTheme.typography.labelMedium)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     ChoiceButton("Any network", state.networkPolicy == CopyNetworkPolicy.ANY_CONNECTED, Modifier.weight(1f)) { viewModel.updateEditor(state.copy(networkPolicy = CopyNetworkPolicy.ANY_CONNECTED)) }
+                    ChoiceButton("Wi-Fi", state.networkPolicy == CopyNetworkPolicy.WIFI_ONLY, Modifier.weight(1f)) { viewModel.updateEditor(state.copy(networkPolicy = CopyNetworkPolicy.WIFI_ONLY)) }
                     ChoiceButton("Unmetered", state.networkPolicy == CopyNetworkPolicy.UNMETERED_ONLY, Modifier.weight(1f)) { viewModel.updateEditor(state.copy(networkPolicy = CopyNetworkPolicy.UNMETERED_ONLY)) }
                 }
             }
             item { ToggleRow("Require charging", state.requiresCharging) { viewModel.updateEditor(state.copy(requiresCharging = it)) } }
-            item { ToggleRow("Battery not low", state.requiresBatteryNotLow) { viewModel.updateEditor(state.copy(requiresBatteryNotLow = it)) } }
-            item { ToggleRow("Storage not low", state.requiresStorageNotLow) { viewModel.updateEditor(state.copy(requiresStorageNotLow = it)) } }
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = viewModel::dismissEditor) { Text("Cancel") }; Button(onClick = viewModel::saveRule, enabled = state.sourceTreeUri.isNotBlank()) { Text("Save") } }
@@ -362,10 +462,4 @@ private fun friendlyCopySource(value: String): String {
     return Uri.decode(uri.lastPathSegment ?: value).removePrefix("primary:").ifBlank { "Selected folder" }
 }
 
-private fun copyIntervalLabel(minutes: Long): String = when (minutes) {
-    15L -> "15 min"
-    60L -> "1 h"
-    360L -> "6 h"
-    1440L -> "24 h"
-    else -> "$minutes min"
-}
+private fun copyTimeLabel(minutes: Int): String = "%02d:%02d".format(minutes / 60, minutes % 60)

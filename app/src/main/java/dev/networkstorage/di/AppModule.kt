@@ -34,7 +34,7 @@ abstract class Bindings {
 object DatabaseModule {
     @Provides @Singleton fun database(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "network-storage.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .build()
 
     @Provides fun dao(database: AppDatabase): AppDao = database.dao()
@@ -51,6 +51,12 @@ object DatabaseModule {
             db.execSQL("UPDATE connections SET rootMode = 'ON_DEMAND' WHERE rootMode = 'INDEX_ONLY'")
             db.execSQL("UPDATE folder_rules SET mode = 'ON_DEMAND' WHERE mode = 'INDEX_ONLY'")
             db.execSQL("UPDATE indexed_entries SET mode = 'ON_DEMAND' WHERE mode = 'INDEX_ONLY'")
+        }
+    }
+
+    private val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE copy_rules ADD COLUMN scheduledTimeMinutesOfDay INTEGER NOT NULL DEFAULT 240")
         }
     }
 

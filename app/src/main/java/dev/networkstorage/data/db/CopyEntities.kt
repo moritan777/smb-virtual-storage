@@ -9,11 +9,13 @@ import dev.networkstorage.data.copy.CopyConflictPolicy
 enum class CopyNetworkPolicy {
     ANY_CONNECTED,
     UNMETERED_ONLY,
+    WIFI_ONLY,
 }
 
 enum class CopyHistoryStatus {
     SUCCEEDED,
     SKIPPED_IDENTICAL,
+    SKIPPED_CONDITION,
     FAILED,
     CANCELLED,
 }
@@ -36,6 +38,10 @@ enum class CopyErrorCode {
     PROMOTION_FAILED,
     RESTORE_FAILED,
     CANCELLED,
+    NOT_CHARGING,
+    WIFI_NOT_CONNECTED,
+    NETWORK_NOT_CONNECTED,
+    METERED_NETWORK,
     UNKNOWN,
 }
 
@@ -64,6 +70,7 @@ data class CopyRuleEntity(
     val requiresBatteryNotLow: Boolean,
     val requiresStorageNotLow: Boolean,
     val periodicIntervalMinutes: Long,
+    val scheduledTimeMinutesOfDay: Int = 240,
     val createdAt: Long,
     val updatedAt: Long,
 )
