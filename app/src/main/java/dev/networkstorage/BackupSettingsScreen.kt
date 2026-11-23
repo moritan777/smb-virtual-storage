@@ -13,7 +13,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -26,16 +26,18 @@ import androidx.compose.ui.unit.dp
 import dev.networkstorage.data.db.ConnectionSummary
 
 @Composable
-internal fun BackupSettingsScreen(viewModel: MainViewModel) {
+internal fun BackupSettingsScreen(viewModel: MainViewModel, onEditorVisibilityChange: (Boolean) -> Unit = {}) {
     val connections by viewModel.connections.collectAsState()
     var selected by remember { mutableStateOf<ConnectionSummary?>(null) }
 
     val current = selected
+    BackHandler(enabled = current != null) { selected = null }
     if (current != null) {
         CopyRulesScreen(
             connection = current,
             onBack = { selected = null },
             simpleMode = true,
+            onEditorVisibilityChange = onEditorVisibilityChange,
         )
         return
     }
@@ -60,8 +62,8 @@ internal fun BackupSettingsScreen(viewModel: MainViewModel) {
             LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(connections, key = { it.connection.id }) { summary ->
                     ElevatedCard(
-                        Modifier.fillMaxWidth(),
                         onClick = { selected = summary },
+                        modifier = Modifier.fillMaxWidth(),
                         shape = SectionShape,
                         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                     ) {
