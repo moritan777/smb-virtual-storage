@@ -120,7 +120,7 @@ private fun CopyRuleCard(rule: CopyRuleEntity, execution: CopyExecutionUiState?,
             Text("→ ${rule.destinationPath.ifBlank { "SMB root" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(if (rule.conflictPolicy == CopyConflictPolicy.KEEP_BOTH) "Keep Both" else "Replace + backup", style = MaterialTheme.typography.labelMedium)
-                Text(if (rule.automaticCopyEnabled) "Auto • ${copyIntervalLabel(rule.periodicIntervalMinutes)}" else "Manual", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Text(if (rule.automaticCopyEnabled) "Auto • ${copyTimeLabel(rule.scheduledTimeMinutesOfDay)}" else "Manual", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             }
             execution?.let { CopyExecutionStatus(it) }
             HorizontalDivider()
@@ -268,10 +268,15 @@ private fun CopyActivityCard(entry: CopyHistoryEntity) {
                 Text(copyHistoryStatusLabel(entry.status), fontWeight = FontWeight.SemiBold, color = copyHistoryStatusColor(entry.status))
                 Text(DateFormat.getDateTimeInstance().format(Date(entry.completedAt)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(entry.sourceRelativePath, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text("→ ${entry.destinationRelativePath}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(formatBytes(entry.sourceSize), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            entry.errorCode?.let { Text("Error: ${it.name}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            if (entry.status == CopyHistoryStatus.SKIPPED_CONDITION) {
+                Text("Automatic backup", style = MaterialTheme.typography.bodyMedium)
+                Text("Reason: ${entry.errorCode?.let(::copyScheduleSkipReason) ?: "Condition not met"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Text(entry.sourceRelativePath, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text("→ ${entry.destinationRelativePath}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(formatBytes(entry.sourceSize), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                entry.errorCode?.let { Text("Error: ${it.name}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            }
             entry.backupRelativePath?.let { Text("Backup: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         }
     }
@@ -280,14 +285,23 @@ private fun CopyActivityCard(entry: CopyHistoryEntity) {
 @Composable
 private fun copyHistoryStatusColor(status: CopyHistoryStatus) = when (status) {
     CopyHistoryStatus.SUCCEEDED -> MaterialTheme.colorScheme.primary
-    CopyHistoryStatus.SKIPPED_IDENTICAL -> MaterialTheme.colorScheme.secondary
+    CopyHistoryStatus.SKIPPED_IDENTICAL, CopyHistoryStatus.SKIPPED_CONDITION -> MaterialTheme.colorScheme.secondary
     CopyHistoryStatus.FAILED -> MaterialTheme.colorScheme.error
     CopyHistoryStatus.CANCELLED -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+private fun copyScheduleSkipReason(code: dev.networkstorage.data.db.CopyErrorCode) = when (code) {
+    dev.networkstorage.data.db.CopyErrorCode.NOT_CHARGING -> "Device was not charging"
+    dev.networkstorage.data.db.CopyErrorCode.WIFI_NOT_CONNECTED -> "Wi-Fi was not connected"
+    dev.networkstorage.data.db.CopyErrorCode.NETWORK_NOT_CONNECTED -> "No network connection"
+    dev.networkstorage.data.db.CopyErrorCode.METERED_NETWORK -> "Network was metered"
+    else -> code.name
 }
 
 private fun copyHistoryStatusLabel(status: CopyHistoryStatus) = when (status) {
     CopyHistoryStatus.SUCCEEDED -> "Copied"
     CopyHistoryStatus.SKIPPED_IDENTICAL -> "Identical • skipped"
+    CopyHistoryStatus.SKIPPED_CONDITION -> "Automatic run • skipped"
     CopyHistoryStatus.FAILED -> "Failed"
     CopyHistoryStatus.CANCELLED -> "Cancelled"
 }
@@ -325,14 +339,22 @@ private fun CopyRuleEditorScreen(viewModel: CopyRulesViewModel, connectionName: 
         item { ToggleRow("Automatic copy", state.automaticCopyEnabled) { viewModel.updateEditor(state.copy(automaticCopyEnabled = it)) } }
         if (state.automaticCopyEnabled) {
             item {
-                Text("Interval", style = MaterialTheme.typography.labelMedium)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf(15L, 60L, 360L, 1440L).forEach { minutes -> ChoiceButton(copyIntervalLabel(minutes), state.periodicIntervalMinutes == minutes, Modifier.weight(1f)) { viewModel.updateEditor(state.copy(periodicIntervalMinutes = minutes)) } } }
-                Text("Automatic copy runs periodically, but Android WorkManager decides the exact execution time. The selected interval is not an exact clock schedule.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Daily backup time", style = MaterialTheme.typography.labelMedium)
+                OutlinedTextField(
+                    value = state.scheduledTime,
+                    onValueChange = { viewModel.updateEditor(state.copy(scheduledTime = it.take(5))) },
+                    label = { Text("Time (24-hour HH:mm)") },
+                    placeholder = { Text("04:00") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+                Text("Runs once each day at the selected local time. Android may delay background execution; if charging or network conditions are not met when it starts, that run is skipped and recorded.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
                 Text("Network", style = MaterialTheme.typography.labelMedium)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     ChoiceButton("Any network", state.networkPolicy == CopyNetworkPolicy.ANY_CONNECTED, Modifier.weight(1f)) { viewModel.updateEditor(state.copy(networkPolicy = CopyNetworkPolicy.ANY_CONNECTED)) }
+                    ChoiceButton("Wi-Fi", state.networkPolicy == CopyNetworkPolicy.WIFI_ONLY, Modifier.weight(1f)) { viewModel.updateEditor(state.copy(networkPolicy = CopyNetworkPolicy.WIFI_ONLY)) }
                     ChoiceButton("Unmetered", state.networkPolicy == CopyNetworkPolicy.UNMETERED_ONLY, Modifier.weight(1f)) { viewModel.updateEditor(state.copy(networkPolicy = CopyNetworkPolicy.UNMETERED_ONLY)) }
                 }
             }
@@ -362,10 +384,4 @@ private fun friendlyCopySource(value: String): String {
     return Uri.decode(uri.lastPathSegment ?: value).removePrefix("primary:").ifBlank { "Selected folder" }
 }
 
-private fun copyIntervalLabel(minutes: Long): String = when (minutes) {
-    15L -> "15 min"
-    60L -> "1 h"
-    360L -> "6 h"
-    1440L -> "24 h"
-    else -> "$minutes min"
-}
+private fun copyTimeLabel(minutes: Int): String = "%02d:%02d".format(minutes / 60, minutes % 60)
