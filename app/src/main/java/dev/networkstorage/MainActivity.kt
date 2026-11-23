@@ -88,7 +88,7 @@ private fun NetworkStorageScreen(viewModel: MainViewModel = hiltViewModel()) {
                 AppScreen.CONNECTION_EDIT -> ConnectionEditorScreen(viewModel)
                 AppScreen.BROWSER -> BrowserScreen(viewModel)
                 AppScreen.MIRROR -> SyncScreen(viewModel)
-                AppScreen.BACKUP -> BackupSettingsScreen(viewModel)
+                AppScreen.BACKUP -> BackupSettingsScreen(viewModel, onEditorVisibilityChange = { copyEditorVisible = it })
                 AppScreen.SETTINGS -> SettingsScreen(viewModel)
             }
         }
