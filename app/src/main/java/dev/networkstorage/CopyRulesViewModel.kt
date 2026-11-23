@@ -34,7 +34,7 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 
-data class CopyRuleEditorState(val id: String? = null, val sourceTreeUri: String = "", val destinationPath: String = "", val includeSubfolders: Boolean = true, val conflictPolicy: CopyConflictPolicy = CopyConflictPolicy.KEEP_BOTH, val automaticCopyEnabled: Boolean = false, val networkPolicy: CopyNetworkPolicy = CopyNetworkPolicy.ANY_CONNECTED, val requiresCharging: Boolean = false, val requiresBatteryNotLow: Boolean = true, val requiresStorageNotLow: Boolean = true, val periodicIntervalMinutes: Long = 60L, val scheduledTime: String = "04:00", val createdAt: Long = 0L)
+data class CopyRuleEditorState(val id: String? = null, val sourceTreeUri: String = "", val destinationPath: String = "", val includeSubfolders: Boolean = true, val conflictPolicy: CopyConflictPolicy = CopyConflictPolicy.KEEP_BOTH, val automaticCopyEnabled: Boolean = false, val networkPolicy: CopyNetworkPolicy = CopyNetworkPolicy.ANY_CONNECTED, val requiresCharging: Boolean = false, val requiresBatteryNotLow: Boolean = false, val requiresStorageNotLow: Boolean = false, val periodicIntervalMinutes: Long = 60L, val scheduledTime: String = "04:00", val createdAt: Long = 0L)
 data class CopyExecutionUiState(val state: WorkInfo.State, val automatic: Boolean, val copied: Int = 0, val skipped: Int = 0, val failed: Int = 0, val completed: Int = 0, val total: Int = 0, val currentSourcePath: String = "", val runAttemptCount: Int = 0)
 internal data class SelectedCopyWork(val info: WorkInfo, val automatic: Boolean)
 internal fun selectCopyWorkInfo(manual: List<WorkInfo>, periodic: List<WorkInfo>): SelectedCopyWork? {
@@ -69,7 +69,7 @@ class CopyRulesViewModel @Inject constructor(application: Application, private v
     }
     fun setConnection(id: String) { if (connectionId.value != id) { connectionId.value = id; activityRuleId.value = null; editor.value = null; preview.value = CopyPreviewState() } }
     fun newRule() { activityRuleId.value = null; editor.value = CopyRuleEditorState(); preview.value = CopyPreviewState() }
-    fun editRule(rule: CopyRuleEntity) { activityRuleId.value = null; preview.value = CopyPreviewState(); editor.value = CopyRuleEditorState(rule.id, rule.sourceTreeUri, rule.destinationPath, rule.includeSubfolders, rule.conflictPolicy, rule.automaticCopyEnabled, rule.networkPolicy, rule.requiresCharging, rule.requiresBatteryNotLow, rule.requiresStorageNotLow, rule.periodicIntervalMinutes, formatScheduledTime(rule.scheduledTimeMinutesOfDay), rule.createdAt) }
+    fun editRule(rule: CopyRuleEntity) { activityRuleId.value = null; preview.value = CopyPreviewState(); editor.value = CopyRuleEditorState(rule.id, rule.sourceTreeUri, rule.destinationPath, rule.includeSubfolders, rule.conflictPolicy, rule.automaticCopyEnabled, rule.networkPolicy, rule.requiresCharging, false, false, rule.periodicIntervalMinutes, formatScheduledTime(rule.scheduledTimeMinutesOfDay), rule.createdAt) }
     fun showActivity(rule: CopyRuleEntity) { activityRuleId.value = rule.id }
     fun hideActivity() { activityRuleId.value = null }
     fun updateEditor(value: CopyRuleEditorState) { editor.value = value; preview.value = CopyPreviewState() }
