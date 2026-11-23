@@ -36,7 +36,7 @@ class Converters {
         CopyRuleEntity::class,
         CopyHistoryEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
