@@ -19,6 +19,10 @@ Backup 画面は、既存の NAS 接続と Copy to SMB のルールモデルを�
 - バックアップルールが SAF source-tree permission と、選択した connection root からの相対 destination を保持する。
 - ルール編集で日次スケジュールが更新され、自動実行を無効にすると該当する unique work がキャンセルされる。
 - NAS 接続の削除でアプリ内のルール・履歴・保存済みログインが削除される一方、NAS 上のファイルと端末側 source ファイルは残る。
+- NAS destination picker が選択した share / connection root 配下のフォルダだけを表示し、親階層へ戻れる。
+- picker で選択した現在のフォルダが、connection root からの相対 destination としてルールに保存される。
+- 新規フォルダ作成で空白のみの名前が拒否され、作成後に現在階層の一覧が再取得される。
+- `..` や absolute path など root 外へ抜ける入力が拒否される。
 - daily work が端末のローカルタイムゾーンで次回時刻を計算し、scheduled worker の開始時に次回分を再登録する。
 - 充電・ネットワーク条件は Worker の実行時に確認する。条件を満たさない場合はスキップを履歴に残し、ファイルコピーを行わない。
 - WorkManager の実行は設定時刻より遅れる場合がある。正確なアラームとして検証せず、スキップ後の同日再実行も前提にしない。
@@ -28,6 +32,8 @@ Backup 画面は、既存の NAS 接続と Copy to SMB のルールモデルを�
 
 最低限、次を確認します。
 
+- Backup 画面の **Test** から Preview を開き、ローディング中・エラー時・結果表示時の各状態で画面がクラッシュしない。
+- 同じ source-relative path が複数の結果に含まれる場合も、LazyColumn の item key が衝突しない。
 - Preview が SMB を変更しない。
 - 同一 SHA-256 の original destination は `Unchanged` になる。
 - `KEEP_BOTH` の numbered destination が正しく選ばれる。
