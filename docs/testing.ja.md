@@ -10,6 +10,20 @@ Copy to SMB の decision engine は `NEW / UNCHANGED / KEEP_BOTH / REPLACE / REU
 
 Room / Android instrumentation では、正常スキャン後の整合、Connection の連鎖削除、Root index の削除、parent 単位の paging、Unicode ファイル名、認証情報の置換、Preferences DataStore、SAF tree の分離、外部 viewer へ渡す read-only intent を検証します。Folder cache marker については、子孫に `CACHED` ファイルがあるフォルダと、キャッシュがないフォルダの projection/state を確認することを受け入れ条件とします。
 
+## Backup ルールと毎日の自動実行
+
+Backup 画面は、既存の NAS 接続と Copy to SMB のルールモデルを使った UI です。エミュレーターまたは実機で次を確認します。
+
+- NAS 接続確認に成功しない場合、接続を保存しない。
+- 接続フォームで host、port、username、password、任意の domain、SMB share 名を入力できる。share 欄にはフォルダパスではなく share 名を指定する。
+- バックアップルールが SAF source-tree permission と、選択した connection root からの相対 destination を保持する。
+- ルール編集で日次スケジュールが更新され、自動実行を無効にすると該当する unique work がキャンセルされる。
+- NAS 接続の削除でアプリ内のルール・履歴・保存済みログインが削除される一方、NAS 上のファイルと端末側 source ファイルは残る。
+- daily work が端末のローカルタイムゾーンで次回時刻を計算し、scheduled worker の開始時に次回分を再登録する。
+- 充電・ネットワーク条件は Worker の実行時に確認する。条件を満たさない場合はスキップを履歴に残し、ファイルコピーを行わない。
+- WorkManager の実行は設定時刻より遅れる場合がある。正確なアラームとして検証せず、スキップ後の同日再実行も前提にしない。
+- 同じルールの manual / daily / retry work が別々の unique work として扱われる。
+
 ## Copy to SMB の受け入れ確認
 
 最低限、次を確認します。
@@ -22,7 +36,7 @@ Room / Android instrumentation では、正常スキャン後の整合、Connect
 - `.part` が失敗・キャンセル時に残らない。
 - source file がコピーによって変更・削除されない。
 - deletion propagation がない。
-- manual / periodic / retry の work がルール単位で干渉しない。
+- manual / daily / retry の work がルール単位で干渉しない。
 - Activity が file-level result と error code / backup path を表示できる。
 - 失敗 source path だけを retry work に渡せる。
 
@@ -36,7 +50,7 @@ Mirror については NAS-only / NAS-newer だけを NAS → Device へコピ�
 
 ## Database migration
 
-production database の migration と `app/schemas` を一致させます。migration の検証では production migration object を直接実行する `MigrationTestHelper` を優先し、SQL をテストコードへ複製しません。
+production database の migration と `app/schemas` を一致させます。migration の検証では production migration object を直接実行する `MigrationTestHelper` を優先し、SQL をテストコードへ複製しません。Schema version 5 では copy rule に `scheduledTimeMinutesOfDay` を追加し、デフォルト値は午前 4:00（240 分）です。既存ルールがこの値で移行され、自動実行は明示的に有効化するまで無効のままであることを確認します。
 
 ## コマンド
 
