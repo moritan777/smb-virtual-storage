@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
@@ -34,6 +35,7 @@ import dev.networkstorage.data.db.ConnectionSummary
 internal fun BackupSettingsScreen(viewModel: MainViewModel, onEditorVisibilityChange: (Boolean) -> Unit = {}) {
     val connections by viewModel.connections.collectAsState()
     var selected by remember { mutableStateOf<ConnectionSummary?>(null) }
+    var pendingDelete by remember { mutableStateOf<ConnectionSummary?>(null) }
     var showNewNas by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var host by remember { mutableStateOf("") }
@@ -42,6 +44,27 @@ internal fun BackupSettingsScreen(viewModel: MainViewModel, onEditorVisibilityCh
     var password by remember { mutableStateOf("") }
     var domain by remember { mutableStateOf("") }
     var share by remember { mutableStateOf("") }
+
+    pendingDelete?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Delete backup connection?") },
+            text = {
+                Text(
+                    "This removes the NAS connection from this app, including its backup settings, history, local index, and saved login. Files already stored on the NAS and files on your phone will not be deleted."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteConnection(target)
+                    pendingDelete = null
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+            },
+        )
+    }
 
     val current = selected
     BackHandler(enabled = current != null || showNewNas) {
@@ -64,9 +87,9 @@ internal fun BackupSettingsScreen(viewModel: MainViewModel, onEditorVisibilityCh
         ) {
             item {
                 Spacer(Modifier.height(8.dp))
-                Text("Create backup", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                Text("Add NAS connection", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Enter the NAS connection here. You do not need to register it on another screen.",
+                    "Connect to a NAS to store your phone backups.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -113,9 +136,9 @@ internal fun BackupSettingsScreen(viewModel: MainViewModel, onEditorVisibilityCh
 
     Column(Modifier.fillMaxSize().padding(horizontal = ScreenPadding)) {
         Spacer(Modifier.height(8.dp))
-        Text("Backup settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Text("NAS Connections", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Text(
-            "Choose an existing NAS or enter a new connection. Existing copy rules and the same copy engine are reused.",
+            "Manage your NAS connections. Select a NAS to view or configure its backups.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -135,7 +158,11 @@ internal fun BackupSettingsScreen(viewModel: MainViewModel, onEditorVisibilityCh
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Text("Configure backups →", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        Text("View backups →", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        TextButton(
+                            onClick = { pendingDelete = summary },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Delete") }
                     }
                 }
             }
