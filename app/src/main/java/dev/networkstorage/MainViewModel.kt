@@ -222,7 +222,7 @@ class MainViewModel @Inject constructor(
             val credential = credentials.get(connection.connection.id) ?: error("CREDENTIAL_REQUIRED")
             val c = connection.connection
             try {
-                val config = ConnectionConfig(c.id, c.name, c.host, c.port, c.share, "", c.username, c.domain, c.rootMode)
+                val config = ConnectionConfig(c.id, c.name, c.host, c.port, c.share, c.basePath, c.username, c.domain, c.rootMode)
                 smb.createDirectory(config, credential, relative)
             } finally { credential.password.fill('\u0000') }
         }
