@@ -46,7 +46,7 @@ The picker can create a new directory at its current location. The folder name i
 
 ## Test Preview stability
 
-The Backup rule card's **Test** action opens the Copy to SMB dry-run preview. The preview screen renders loading, error, and result states as mutually exclusive content branches rather than returning early from inside its Compose layout. Preview result rows use keys that remain unique even if source-relative paths repeat. The ViewModel handles a missing connection and converts expected failures into user-facing messages while rethrowing coroutine cancellation instead of treating cancellation as an ordinary preview error.
+The Backup rule card's **Test** action opens the Copy to SMB dry-run preview. The preview screen renders loading, error, and result states as mutually exclusive content branches rather than returning early from inside its Compose layout. Preview result rows use keys that remain unique even if source-relative paths repeat. The ViewModel handles a missing connection and maps known credential, SAF source-tree, invalid or overlapping source-path, and SMB failures to actionable user-facing messages. Coroutine cancellation is rethrown instead of being treated as an ordinary preview error.
 
 ## Folder cache marker
 
