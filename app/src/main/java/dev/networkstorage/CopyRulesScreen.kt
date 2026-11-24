@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
@@ -32,6 +33,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -201,20 +203,18 @@ private fun CopyPreviewScreen(
                 Text(if (simpleMode) "Backup test" else "Copy preview", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                 Text(rule?.let { friendlyCopySource(it.sourceTreeUri) } ?: "Copy rule", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (result != null && !simpleMode) FilledTonalButton(onClick = { viewModel.copyNow(rule!!) }) { Text("Copy now") }
+            if (result != null && !simpleMode && rule != null) FilledTonalButton(onClick = { viewModel.copyNow(rule) }) { Text("Copy now") }
         }
         if (state.loading) {
             Spacer(Modifier.height(12.dp))
             LinearProgressIndicator(Modifier.fillMaxWidth())
             Text("Inspecting source and SMB destinations…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            return
-        }
-        state.error?.let {
+        } else if (state.error != null) {
             Spacer(Modifier.height(8.dp))
-            ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape) { Text(it, Modifier.padding(14.dp), color = MaterialTheme.colorScheme.error) }
-            return
+            ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape) { Text(state.error, Modifier.padding(14.dp), color = MaterialTheme.colorScheme.error) }
+        } else if (result != null) {
+            CopyPreviewContent(result)
         }
-        result?.let { CopyPreviewContent(it) }
     }
 }
 
@@ -232,7 +232,7 @@ private fun CopyPreviewContent(result: CopyDryRunResult) {
                 }
             }
         }
-        items(result.items, key = { it.sourceRelativePath }) { item ->
+        itemsIndexed(result.items, key = { index, item -> "${item.sourceRelativePath}_$index" }) { _, item ->
             ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape, colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                 Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

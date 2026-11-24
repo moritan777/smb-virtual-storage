@@ -22,6 +22,8 @@ import dev.networkstorage.data.db.CopyNetworkPolicy
 import dev.networkstorage.data.db.CopyRuleEntity
 import dev.networkstorage.data.worker.CopyToSmbWorker
 import dev.networkstorage.domain.ConnectionConfig
+import dev.networkstorage.domain.UserFacingError
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -75,13 +77,59 @@ class CopyRulesViewModel @Inject constructor(application: Application, private v
     fun updateEditor(value: CopyRuleEditorState) { editor.value = value; preview.value = CopyPreviewState() }
     fun selectSourceTree(uri: Uri) { val current = editor.value ?: return; runCatching { permissions.persistReadPermission(uri.toString(), Intent.FLAG_GRANT_READ_URI_PERMISSION) }.onSuccess { editor.value = current.copy(sourceTreeUri = uri.toString()); preview.value = CopyPreviewState(); message.value = "Source folder selected" }.onFailure { message.value = "Could not retain read access to the source folder" } }
     fun dismissEditor() { editor.value = null; preview.value = CopyPreviewState() }
-    fun previewRule(rule: CopyRuleEntity) { val connection = connectionId.value ?: return; preview.value = CopyPreviewState(rule.id, loading = true); viewModelScope.launch { runCatching { val e = requireNotNull(dao.connection(connection)); dryRunPlanner.plan(ConnectionConfig(e.id,e.name,e.host,e.port,e.share,e.basePath,e.username,e.domain,e.rootMode), rule.sourceTreeUri, rule.destinationPath, rule.includeSubfolders, rule.conflictPolicy) }.onSuccess { preview.value = CopyPreviewState(rule.id,result=it) }.onFailure { preview.value = CopyPreviewState(rule.id,error=it.message ?: "Could not prepare preview") } } }
+    fun previewRule(rule: CopyRuleEntity) {
+        val connection = connectionId.value ?: return
+        preview.value = CopyPreviewState(rule.id, loading = true)
+        viewModelScope.launch {
+            try {
+                val e = dao.connection(connection)
+                if (e == null) {
+                    preview.value = CopyPreviewState(rule.id, error = "Connection not found")
+                    return@launch
+                }
+                val result = dryRunPlanner.plan(
+                    ConnectionConfig(e.id, e.name, e.host, e.port, e.share, e.basePath, e.username, e.domain, e.rootMode),
+                    rule.sourceTreeUri,
+                    rule.destinationPath,
+                    rule.includeSubfolders,
+                    rule.conflictPolicy,
+                )
+                preview.value = CopyPreviewState(rule.id, result = result)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                preview.value = CopyPreviewState(rule.id, error = formatPreviewError(e))
+            }
+        }
+    }
     fun clearPreview() { preview.value = CopyPreviewState() }
     fun saveRule() = viewModelScope.launch { val connection = connectionId.value ?: return@launch; val value = editor.value ?: return@launch; if (value.sourceTreeUri.isBlank()) { message.value="Choose a source folder"; return@launch }; val scheduledMinutes=parseScheduledTime(value.scheduledTime); if (scheduledMinutes == null) { message.value="Enter a valid time in HH:mm format"; return@launch }; val now=System.currentTimeMillis(); val id=value.id ?: UUID.randomUUID().toString(); runCatching { val saved=persistence.saveRule(id,connection,value.sourceTreeUri,value.destinationPath,value.includeSubfolders,value.conflictPolicy,value.automaticCopyEnabled,value.networkPolicy,value.requiresCharging,value.requiresBatteryNotLow,value.requiresStorageNotLow,value.periodicIntervalMinutes,scheduledMinutes,value.createdAt.takeIf { it>0 } ?: now,now); scheduler.schedule(saved) }.onSuccess { editor.value=null; preview.value=CopyPreviewState(); message.value="Copy rule saved" }.onFailure { message.value=it.message ?: "Could not save copy rule" } }
     fun deleteRule(rule: CopyRuleEntity) = viewModelScope.launch { scheduler.cancelManual(rule.id); scheduler.cancelRetry(rule.id); scheduler.cancelPeriodic(rule.id); runCatching { persistence.deleteRule(rule.id) }.onSuccess { message.value="Copy rule deleted; source and SMB files were not changed" }.onFailure { message.value="Could not delete copy rule" } }
     fun copyNow(rule: CopyRuleEntity) { runCatching { scheduler.enqueueManual(rule.id) }.onSuccess { message.value="Copy queued" }.onFailure { message.value="Could not queue the copy" } }
     fun retryFailed(rule: CopyRuleEntity) { viewModelScope.launch { runCatching { val failed = persistence.recentHistory(rule.id, 500).filter { it.status == CopyHistoryStatus.FAILED }.map { it.sourceRelativePath }.distinct(); scheduler.enqueueRetry(rule.id, failed) }.onSuccess { message.value="Failed files queued for retry" }.onFailure { message.value=it.message ?: "Could not queue failed files" } } }
     fun cancelManualCopy(rule: CopyRuleEntity) { runCatching { scheduler.cancelManual(rule.id) }.onSuccess { message.value="Manual copy cancellation requested" }.onFailure { message.value="Could not cancel the manual copy" } }
+}
+
+private fun formatPreviewError(error: Throwable): String {
+    val message = error.message
+    if (!message.isNullOrBlank()) {
+        when {
+            message.contains("Credential unavailable", ignoreCase = true) ->
+                return "Saved credentials are unavailable. Edit the connection and save the password again."
+            message.contains("SAF source tree is unavailable", ignoreCase = true) ||
+                message.contains("Unable to open SAF source tree", ignoreCase = true) ->
+                return "Source folder is unavailable. Please select the source folder again."
+            message.contains("Copy source must be a SAF content URI", ignoreCase = true) ->
+                return "Invalid source folder."
+            message.contains("Copy source must not overlap", ignoreCase = true) ->
+                return message
+        }
+    }
+    val code = UserFacingError.code(error)
+    if (code != UserFacingError.UNKNOWN) {
+        return UserFacingError.message(code)
+    }
+    return message?.takeIf { it.isNotBlank() } ?: "Could not prepare preview"
 }
 
 private fun parseScheduledTime(value: String): Int? {
