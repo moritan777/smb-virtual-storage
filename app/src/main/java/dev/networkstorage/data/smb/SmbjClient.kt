@@ -73,6 +73,27 @@ class SmbjClient @Inject constructor() : SmbClient {
         }
     }
 
+    override suspend fun createDirectory(connection: ConnectionConfig, credential: Credential, relativePath: String) = withContext(Dispatchers.IO) {
+        val relative = RemotePath.normalize(relativePath)
+        require(relative.isNotBlank()) { "Directory name is required" }
+        val root = RemotePath.normalize(connection.basePath)
+        val remotePath = listOf(root, relative).filter { it.isNotBlank() }.joinToString("\\")
+        try {
+            SMBClient().use { client ->
+                client.connect(connection.host, connection.port).use { transport ->
+                    transport.authenticate(AuthenticationContext(connection.username, credential.password, connection.domain)).use { session ->
+                        (session.connectShare(connection.share) as DiskShare).use { share ->
+                            share.mkdir(remotePath)
+                        }
+                    }
+                }
+            }
+        } catch (error: Throwable) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            throw SmbFailure(mapError(error), error)
+        } finally { credential.password.fill('\\u0000') }
+    }
+
     private fun mapError(error: Throwable): NetworkError = when (error) {
         is UnknownHostException -> NetworkError.HOST_NOT_FOUND
         is TimeoutException, is java.net.SocketTimeoutException -> NetworkError.TIMEOUT
