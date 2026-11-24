@@ -87,7 +87,7 @@ internal fun CopyRulesScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 TextButton(onClick = onBack) { Text("←") }
                 Column {
-                    Text(if (simpleMode) "Backup settings" else "Copy to SMB", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                    Text(if (simpleMode) "Backups" else "Copy to SMB", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                     Text(connection.connection.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -132,6 +132,7 @@ private fun CopyRuleCard(rule: CopyRuleEntity, execution: CopyExecutionUiState?,
                 )
                 execution?.let { CopyExecutionStatus(it) }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { viewModel.showActivity(rule) }) { Text("History") }
                     TextButton(onClick = { viewModel.deleteRule(rule) }, enabled = !busy) { Text("Delete") }
                     Button(onClick = { viewModel.editRule(rule) }, enabled = !busy) { Text("Edit backup") }
                 }
@@ -149,7 +150,7 @@ private fun CopyRuleCard(rule: CopyRuleEntity, execution: CopyExecutionUiState?,
                         Button(onClick = { viewModel.copyNow(rule) }, enabled = !busy) { Text(if (busy) "Working…" else "Copy now") }
                     }
                     OutlinedButton(onClick = { viewModel.previewRule(rule) }, enabled = !busy) { Text("Preview") }
-                    OutlinedButton(onClick = { viewModel.showActivity(rule) }) { Text("Activity") }
+                    OutlinedButton(onClick = { viewModel.showActivity(rule) }) { Text("History") }
                     OutlinedButton(onClick = { viewModel.editRule(rule) }, enabled = !busy) { Text("Edit") }
                     TextButton(onClick = { viewModel.deleteRule(rule) }, enabled = !busy) { Text("Delete") }
                 }
@@ -174,7 +175,7 @@ private fun CopyExecutionStatus(value: CopyExecutionUiState) {
             Text("${value.copied} copied • ${value.skipped} skipped • ${value.failed} failed", style = MaterialTheme.typography.labelSmall, color = if (value.failed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
         }
         WorkInfo.State.SUCCEEDED -> Text("Last copy: ${value.copied} copied • ${value.skipped} skipped • ${value.failed} failed", style = MaterialTheme.typography.bodySmall, color = if (value.failed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-        WorkInfo.State.FAILED -> Text("Last copy failed • see Activity", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        WorkInfo.State.FAILED -> Text("Backup failed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         WorkInfo.State.CANCELLED -> Text("Last copy cancelled", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -259,11 +260,11 @@ private fun CopyRecentActivityScreen(rule: CopyRuleEntity?, entries: List<CopyHi
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             TextButton(onClick = onBack) { Text("←") }
             Column {
-                Text("Recent activity", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                Text("Backup History", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                 Text(rule?.let { friendlyCopySource(it.sourceTreeUri) } ?: "Copy rule", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        Text("Newest 20 file results", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Latest 20 file results", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
         if (entries.isEmpty()) {
             ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape) {
@@ -330,8 +331,8 @@ private fun BackupRuleEditorScreen(viewModel: CopyRulesViewModel, state: CopyRul
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = ScreenPadding), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Spacer(Modifier.height(8.dp))
-            Text(if (state.id == null) "Create backup" else "Edit backup", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Text("Choose what to back up and when. Advanced copy behavior keeps its safe defaults.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (state.id == null) "Backup Setup" else "Edit Backup", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text("Choose a folder on your phone and a destination on your NAS. Set when your backup should run.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             Text("Phone folder", style = MaterialTheme.typography.labelMedium)
