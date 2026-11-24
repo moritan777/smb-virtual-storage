@@ -6,7 +6,9 @@ Network Storage is a single-module, non-root Android application. It indexes a c
 
 ## Boundaries and responsibilities
 
-Compose and ViewModels handle connection editing, local-index browsing, settings, Copy to SMB rule editing, preview, activity, and execution status. Room stores connection metadata, indexed entries, cache metadata, Copy to SMB rules, and copy history.
+Compose and ViewModels handle connection editing, local-index browsing, general settings, the dedicated Backup area, Copy to SMB rule editing, preview, activity, and execution status. Room stores connection metadata, indexed entries, cache metadata, Copy to SMB rules, and copy history.
+
+The Backup area reuses the existing connection and Copy to SMB rule model. It provides a focused NAS-connection workflow and a per-connection list of phone-folder backup rules; it does not introduce a second transfer engine.
 
 Normal SMB access stays behind the read-only `SmbClient` interface. Copy to SMB alone uses a separate `SmbCopyClient` and a narrowly scoped write boundary below the connection root. Credentials are protected by Android Keystore and are not stored in Room, Worker input, or copy history. Connection-root-relative paths are normalized at each boundary.
 
@@ -24,7 +26,7 @@ For directories, the browser projection reports local-data presence when any des
 
 ## Copy to SMB
 
-Copy to SMB is one-way Device → SMB, not bidirectional synchronization. `CopyToSmbOrchestrator` and `CopyToSmbTreeExecutor` perform execution, while `CopyToSmbScheduler` / WorkManager separate manual, periodic, and retry work. Execution is serialized per rule.
+Copy to SMB is one-way Device → SMB, not bidirectional synchronization. `CopyToSmbOrchestrator` and `CopyToSmbTreeExecutor` perform execution, while `CopyToSmbScheduler` / WorkManager separate manual, daily, and retry work. Execution is serialized per rule.
 
 ### Preview and decision planning
 
@@ -44,7 +46,22 @@ A Copy to SMB upload follows `.part` creation → bounded copy → size / SHA-25
 
 ### Progress, history, cancellation, and retry
 
-WorkManager progress is surfaced as total / completed / copied / skipped / failed / current source path / run attempt. Manual copy can be cancelled. A retry path can enqueue only previously failed source-relative paths using `onlyRelativePaths`; retry is a separate unique work stream from manual and periodic execution.
+WorkManager progress is surfaced as total / completed / copied / skipped / failed / current source path / run attempt. Manual copy can be cancelled. A retry path can enqueue only previously failed source-relative paths using `onlyRelativePaths`; retry is a separate unique work stream from manual and daily execution. The retry operation is available in the application layer, while a dedicated failed-only retry button is not currently exposed in the Copy to SMB card UI.
+
+## Backup settings and daily execution
+
+`BackupSettingsScreen` provides the dedicated Backup entry point. A user can add a NAS connection by entering host, port, credentials, optional domain, and SMB share name. The connection is checked before it is accepted. Selecting a connection opens its backup-rule workflow, which reuses the Copy to SMB rule editor and transfer pipeline.
+
+A rule stores the SAF source tree, destination directory relative to the configured SMB root, conflict policy, subfolder behavior, and optional daily schedule settings. Deleting a connection removes app-side connection data, related backup rules/history, local index data, and saved credentials; it does not delete NAS files or the phone's source files.
+
+Daily execution is implemented as a chain of one-time WorkManager requests rather than a precise clock alarm:
+
+1. The scheduler calculates the next occurrence of the rule's local wall-clock time and enqueues a uniquely named request for that rule.
+2. When a scheduled worker starts, it queues the next occurrence so the daily chain can continue.
+3. The worker checks the rule's charging and network policy (any connected network, unmetered network, or Wi-Fi) at execution time.
+4. If a configured condition is not met, the run is recorded as skipped in history and finishes without copying.
+
+WorkManager and Android background-execution policy can delay a request. A skipped run is recorded; the implementation does not guarantee another attempt later that same day. Manual runs have a connected-network WorkManager constraint and use a separate unique-work name from daily and retry runs.
 
 ## Security invariants
 
@@ -57,6 +74,6 @@ WorkManager progress is surfaced as total / completed / copied / skipped / faile
 
 ## WorkManager
 
-Automatic Copy to SMB work follows its configured network, charging, battery, and storage constraints. WorkManager does not guarantee an exact wall-clock execution time. Manual, periodic, and retry work use separate unique work names so the UI can identify the active execution.
+Manual, daily, and retry Copy to SMB work use separate unique work names. Daily work uses a per-rule one-time request chain and local-time calculation; it is not an exact-time alarm. The worker performs the rule-specific charging/network checks and records skipped runs. Startup reconciliation restores missing daily work for enabled rules and cancels scheduled work for disabled rules.
 
 Mirror periodic synchronization also uses WorkManager, but remains independent from Copy to SMB work and storage boundaries.
