@@ -1,6 +1,6 @@
 # Copy to SMB V1 implementation audit
 
-This audit tracks the current `feature/copy-decision-dry-run` implementation against `docs/v1-spec.md`. It is intentionally an implementation-status document: the V1 spec remains the product/security contract, while this file records what has actually been implemented and what still needs verification or UI work.
+This audit tracks the implementation currently integrated into the default branch against `docs/v1-spec.md`. It is intentionally an implementation-status document: the V1 spec remains the product/security contract, while this file records what has actually been implemented and what still needs verification or UI work.
 
 ## Implemented
 
@@ -18,11 +18,13 @@ This audit tracks the current `feature/copy-decision-dry-run` implementation aga
 ### Rules and execution
 
 - Durable Room rule/history storage with bounded history retention.
-- Manual and periodic WorkManager execution with constraints and startup reconciliation.
-- Separate unique work streams for manual, periodic, and failed-file retry.
+- Manual and daily WorkManager execution with constraints and startup reconciliation.
+- Separate unique work streams for manual, daily, and failed-file retry.
 - Per-rule execution serialization.
 - Live WorkManager progress and recent activity UI.
-- User-visible manual-copy cancellation that does not disable periodic scheduling.
+- User-visible manual-copy cancellation that does not disable daily scheduling.
+- Backup-specific UI for NAS connection management and phone-folder backup rules.
+- Daily schedule editor with local time, network policy, and charging requirement.
 - Automatic-copy editor explains that WorkManager, not an exact clock schedule, determines execution timing.
 
 ### Decision planning / Preview
@@ -49,7 +51,7 @@ This audit tracks the current `feature/copy-decision-dry-run` implementation aga
 
 ## Verification status
 
-The current implementation has passed the existing JVM/instrumentation test suite used during this development cycle, including a run of 15 connected Android tests. Build/install verification is also performed with `assembleDebug` and `installDebug` on an Android emulator.
+The JVM unit-test task and Kotlin compilation passed after the current changes were integrated into the default branch. Android instrumentation tests are present; device-dependent verification still requires an emulator or physical Android device.
 
 Real-NAS verification remains necessary for the SMB-specific cases below.
 
