@@ -6,7 +6,9 @@ Network Storage は、単一モジュールで構成された root 権限不要�
 
 ## 境界と責務
 
-Compose と ViewModel が接続編集、ローカルインデックスの閲覧、設定、Copy to SMB のルール編集・Preview・Activity・実行状態を担当します。Room は接続メタデータ、インデックス済みエントリ、キャッシュメタデータ、Copy to SMB のルールと履歴を保存します。
+Compose と ViewModel が接続編集、ローカルインデックスの閲覧、一般設定、専用 Backup 画面、Copy to SMB のルール編集・Preview・Activity・実行状態を担当します。Room は接続メタデータ、インデックス済みエントリ、キャッシュメタデータ、Copy to SMB のルールと履歴を保存します。
+
+Backup 画面は既存の NAS 接続モデルと Copy to SMB のルール・転送処理を再利用します。NAS 接続と端末フォルダのバックアップルールを扱うための専用導線であり、別の転送エンジンを追加するものではありません。
 
 SMB の通常アクセスは読み取り専用 `SmbClient` の背後に限定されています。Copy to SMB だけが別の `SmbCopyClient` を使用し、connection root 配下の狭い書き込み操作に限定されます。認証情報は Android Keystore で保護され、Room や Worker input/history には保存しません。connection-root-relative path は各境界で正規化します。
 
@@ -24,7 +26,7 @@ Room は connection と parent をスコープとする PagingSource を公開�
 
 ## Copy to SMB
 
-Copy to SMB は Device → SMB の一方向コピーで、双方向同期ではありません。`CopyToSmbOrchestrator` と `CopyToSmbTreeExecutor` が実行を担当し、`CopyToSmbScheduler` / WorkManager が manual、periodic、retry の work を分離します。ルールごとの実行は直列化します。
+Copy to SMB は Device → SMB の一方向コピーで、双方向同期ではありません。`CopyToSmbOrchestrator` と `CopyToSmbTreeExecutor` が実行を担当し、`CopyToSmbScheduler` / WorkManager が manual、daily、retry の work を分離します。ルールごとの実行は直列化します。
 
 ### Preview / decision planning
 
@@ -44,7 +46,22 @@ Copy to SMB は Device → SMB の一方向コピーで、双方向同期では�
 
 ### 進捗・履歴・キャンセル・再試行
 
-WorkManager progress を UI に反映し、total / completed / copied / skipped / failed / current source path / run attempt を表示します。手動コピーはキャンセルでき、失敗した source path だけを `onlyRelativePaths` として再実行する retry 経路もあります。retry は通常の manual / periodic work と別の unique work として扱います。
+WorkManager progress を UI に反映し、total / completed / copied / skipped / failed / current source path / run attempt を表示します。手動コピーはキャンセルでき、失敗した source path だけを `onlyRelativePaths` として再実行する retry 経路もあります。retry は通常の manual / daily work と別の unique work として扱います。retry 処理はアプリケーション層から呼び出せますが、Copy to SMB のカード UI に失敗ファイル専用の再試行ボタンは現在ありません。
+
+## Backup 設定と毎日の実行
+
+`BackupSettingsScreen` が専用 Backup 画面を提供します。ホスト、ポート、認証情報、任意の domain、SMB share 名を入力して NAS 接続を追加し、接続確認に成功してから登録します。接続を選択すると、その接続に属するバックアップルールの画面へ進みます。ルール編集と転送処理は既存の Copy to SMB 機能を再利用します。
+
+ルールには SAF source tree、SMB connection root からの相対 destination directory、競合ポリシー、サブフォルダの扱い、任意の毎日実行設定を保存します。NAS 接続を削除すると、アプリ内の接続情報、関連するバックアップルール・履歴、ローカルインデックス、保存済み認証情報が削除されます。NAS 上のファイルや端末側 source ファイルは削除しません。
+
+毎日の自動実行は、正確な時刻を保証するアラームではなく、WorkManager の one-time request をつなぐ方式です。
+
+1. Scheduler がルールのローカル時刻から次回実行時刻を計算し、ルール単位の unique work として登録します。
+2. scheduled worker の開始時に次回分を登録し、日次の chain を維持します。
+3. Worker が実行時点で充電状態とネットワーク条件（接続中の任意ネットワーク、metered でないネットワーク、Wi-Fi）を確認します。
+4. 条件を満たさない場合はコピーを行わず、スキップ理由を履歴に記録します。
+
+WorkManager と Android のバックグラウンド実行制御により、実行が設定時刻より遅れる場合があります。スキップは履歴に残りますが、同日中の再実行は保証しません。手動実行はネットワーク接続を WorkManager constraint として要求し、daily / retry とは別の unique work 名を使用します。
 
 ## セキュリティ上の原則
 
@@ -57,6 +74,6 @@ WorkManager progress を UI に反映し、total / completed / copied / skipped 
 
 ## WorkManager
 
-Copy to SMB の automatic work はネットワーク、charging、battery、storage のルール条件に従います。WorkManager は正確な時計時刻を保証しません。manual / periodic / retry はそれぞれ unique work 名を持ち、起動中の work を UI から識別できるようにします。
+Copy to SMB の manual / daily / retry はそれぞれ別の unique work 名を使います。daily はルール単位の one-time request chain とローカル時刻計算で実装され、正確な時刻のアラームではありません。Worker が充電・ネットワーク条件を確認し、スキップを履歴に残します。起動時の reconciliation は、有効なルールの scheduled work が欠けていれば再登録し、無効なルールの scheduled work をキャンセルします。
 
 Mirror の periodic sync も WorkManager を使用しますが、Copy to SMB とは独立した work とストレージ境界です。
