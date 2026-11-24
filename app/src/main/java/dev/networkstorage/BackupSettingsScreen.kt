@@ -76,6 +76,7 @@ internal fun BackupSettingsScreen(viewModel: MainViewModel, onEditorVisibilityCh
             onBack = { selected = null },
             simpleMode = true,
             onEditorVisibilityChange = onEditorVisibilityChange,
+            mainViewModel = viewModel,
         )
         return
     }
