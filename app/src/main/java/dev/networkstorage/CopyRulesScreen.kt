@@ -405,7 +405,7 @@ private fun BackupRuleEditorScreen(viewModel: CopyRulesViewModel, state: CopyRul
                         showCreateFolder = false
                         newFolderName = ""
                     },
-                    enabled = newFolderName.isNotBlank() && !remotePicker.loading,
+                    enabled = newFolderName.trim().isNotBlank() && !remotePicker.loading,
                 ) { Text("Create") }
             },
             dismissButton = { TextButton(onClick = { showCreateFolder = false; newFolderName = "" }) { Text("Cancel") } },
