@@ -91,7 +91,7 @@ class SmbjClient @Inject constructor() : SmbClient {
         } catch (error: Throwable) {
             if (error is kotlinx.coroutines.CancellationException) throw error
             throw SmbFailure(mapError(error), error)
-        } finally { credential.password.fill('\\u0000') }
+        } finally { credential.password.fill('\u0000') }
     }
 
     private fun mapError(error: Throwable): NetworkError = when (error) {
