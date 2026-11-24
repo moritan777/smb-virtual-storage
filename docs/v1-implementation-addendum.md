@@ -1,6 +1,6 @@
 # V1 implementation addendum
 
-This document supplements `docs/v1-spec.md` for the current `feature/copy-decision-dry-run` implementation. The V1 specification remains the normative product and security contract; this addendum records implemented behavior that was added after the original V1 specification was written.
+This document supplements `docs/v1-spec.md` for implementation behavior added after the original V1 specification was written. The V1 specification remains the normative product and security contract; this addendum records extensions currently integrated into the default branch.
 
 ## Copy to SMB decision planning
 
@@ -26,9 +26,17 @@ Preview reports aggregate counts and per-file destination, decision, size, and r
 
 The Copy to SMB scheduler and worker support retrying only selected source-relative paths. Failed history entries can be collected and passed as an `onlyRelativePaths` set to a retry work request.
 
-Retry is a separate unique WorkManager stream from manual and periodic execution. It does not broaden the SMB write boundary and it does not delete or modify source files.
+Retry is a separate unique WorkManager stream from manual and daily execution. It does not broaden the SMB write boundary and it does not delete or modify source files.
 
 The current ViewModel exposes the failed-file retry operation to the application layer. The current Copy to SMB card UI exposes Preview, Activity, Copy now, Cancel, Edit, and Delete; a dedicated failed-only retry button is not yet exposed in that card.
+
+## Backup settings experience
+
+A dedicated Backup area provides a focused workflow for NAS connections and phone-folder backup rules. Users can add a NAS connection by entering its host, port, credentials, and SMB share, then configure a source folder on the phone and a destination folder below the NAS connection root.
+
+Each backup rule can be configured for daily execution at a selected local time, with a network policy (any connected network or Wi-Fi) and an optional charging requirement. WorkManager can delay execution; a run that starts while its configured conditions are not met is skipped and recorded in history. The configured time is not an exact execution-time guarantee.
+
+Deleting a connection removes its app-side backup configuration, history, local index, and saved login. It does not delete NAS-resident files or the source files on the phone.
 
 ## Folder cache marker
 
