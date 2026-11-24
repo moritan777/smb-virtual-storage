@@ -8,9 +8,9 @@ Network Storage は、単一モジュールで構成された root 権限不要�
 
 Compose と ViewModel が接続編集、ローカルインデックスの閲覧、一般設定、専用 Backup 画面、Copy to SMB のルール編集・Preview・Activity・実行状態を担当します。Room は接続メタデータ、インデックス済みエントリ、キャッシュメタデータ、Copy to SMB のルールと履歴を保存します。
 
-Backup 画面は既存の NAS 接続モデルと Copy to SMB のルール・転送処理を再利用します。NAS 接続と端末フォルダのバックアップルールを扱うための専用導線であり、別の転送エンジンを追加するものではありません。
+Backup 画面は既存の NAS 接続モデルと Copy to SMB のルール・転送処理を再利用します。NAS 接続と端末フォルダのバックアップルールを扱うための専用導線であり、別の転送エンジンを追加するものではありません。保存先フォルダ選択では、接続済み NAS の share と connection root を基準にフォルダ一覧を取得し、階層移動と現在位置の選択を行います。新規フォルダ作成は `createDirectory` のみを通し、入力名を検証して root-relative path として解決します。
 
-SMB の通常アクセスは読み取り専用 `SmbClient` の背後に限定されています。Copy to SMB だけが別の `SmbCopyClient` を使用し、connection root 配下の狭い書き込み操作に限定されます。認証情報は Android Keystore で保護され、Room や Worker input/history には保存しません。connection-root-relative path は各境界で正規化します。
+SMB の一覧取得・ファイル読み取りは `SmbClient` の背後に限定されています。`SmbClient` には Backup の NAS フォルダ選択で使う明示的な `createDirectory` 操作もあり、選択中の connection root 配下に限ってフォルダを作成します。任意のファイル書き込みは提供しません。Copy to SMB のファイル転送だけが別の `SmbCopyClient` を使用し、connection root 配下の狭い書き込み操作に限定されます。認証情報は Android Keystore で保護され、Room や Worker input/history には保存しません。connection-root-relative path は各境界で正規化します。
 
 ## インデックスとブラウザ
 
@@ -50,7 +50,7 @@ WorkManager progress を UI に反映し、total / completed / copied / skipped 
 
 ## Backup 設定と毎日の実行
 
-`BackupSettingsScreen` が専用 Backup 画面を提供します。ホスト、ポート、認証情報、任意の domain、SMB share 名を入力して NAS 接続を追加し、接続確認に成功してから登録します。接続を選択すると、その接続に属するバックアップルールの画面へ進みます。ルール編集と転送処理は既存の Copy to SMB 機能を再利用します。
+`BackupSettingsScreen` が専用 Backup 画面を提供します。ホスト、ポート、認証情報、任意の domain、SMB share 名を入力して NAS 接続を追加し、接続確認に成功してから登録します。接続を選択すると、その接続に属するバックアップルールの画面へ進みます。ルール編集と転送処理は既存の Copy to SMB 機能を再利用します。保存先の NAS folder picker は `SmbClient.list` でフォルダだけを列挙し、親階層への移動と現在フォルダの選択を提供します。新規フォルダ作成では保存済み認証情報を取得して `SmbClient.createDirectory` を呼び出し、処理後にパスワード文字配列をクリアします。
 
 ルールには SAF source tree、SMB connection root からの相対 destination directory、競合ポリシー、サブフォルダの扱い、任意の毎日実行設定を保存します。NAS 接続を削除すると、アプリ内の接続情報、関連するバックアップルール・履歴、ローカルインデックス、保存済み認証情報が削除されます。NAS 上のファイルや端末側 source ファイルは削除しません。
 

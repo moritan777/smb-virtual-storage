@@ -19,6 +19,10 @@ The Backup screen is a UI workflow over the existing connection and Copy to SMB 
 - A backup rule retains its SAF source-tree permission and destination relative to the selected connection root.
 - Editing a rule updates its daily schedule; disabling automatic execution cancels the scheduled unique work.
 - Deleting a connection removes app-side rules/history and saved login but leaves NAS-resident files and phone source files untouched.
+- The NAS destination picker lists folders only below the selected share / connection root and supports navigation to the parent folder.
+- The currently selected picker folder is saved as a destination relative to the connection root.
+- Blank or whitespace-only names are rejected when creating a folder, and the current folder listing is refreshed after creation.
+- Inputs such as `..` or absolute paths cannot escape the configured root.
 - Daily work calculates the next occurrence using the device's local time zone and re-enqueues the next occurrence when a scheduled worker starts.
 - Charging and network policies are checked by the worker at run time. When a condition is not met, the run is recorded as skipped and does not copy files.
 - WorkManager may run later than the configured local time; do not test it as an exact alarm or assume a skipped run is retried later that day.
@@ -28,6 +32,8 @@ The Backup screen is a UI workflow over the existing connection and Copy to SMB 
 
 At minimum verify:
 
+- Open Preview using **Test** in the Backup area and verify that loading, error, and result states render without crashing.
+- Duplicate source-relative paths in a preview result do not produce duplicate LazyColumn item keys.
 - Preview performs no SMB mutation.
 - An identical original destination becomes `Unchanged`.
 - `KEEP_BOTH` selects a valid numbered destination.

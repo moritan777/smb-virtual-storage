@@ -11,4 +11,5 @@ interface RemoteReadHandle : Closeable { val input: InputStream }
 interface SmbClient {
     suspend fun list(connection: ConnectionConfig, credential: Credential, relativeDirectory: String): List<RemoteEntry>
     suspend fun openRead(connection: ConnectionConfig, credential: Credential, relativePath: String): RemoteReadHandle
+    suspend fun createDirectory(connection: ConnectionConfig, credential: Credential, relativePath: String)
 }

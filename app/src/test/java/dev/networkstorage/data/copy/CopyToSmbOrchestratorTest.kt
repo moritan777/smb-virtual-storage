@@ -149,6 +149,16 @@ class CopyToSmbOrchestratorTest {
             val data = requireNotNull(files[relativePath])
             return readHandle(data)
         }
+
+        override suspend fun createDirectory(
+            connection: ConnectionConfig,
+            credential: Credential,
+            relativePath: String,
+        ) {
+            throw UnsupportedOperationException(
+                "Directory creation is not used in this test"
+            )
+        }
     }
 
     private class FakeCopyClient(

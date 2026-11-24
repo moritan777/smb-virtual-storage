@@ -15,6 +15,7 @@ Network Storage is a non-root Android 10+ app that stores a user-selected SMB2/S
 - **MIRROR / Keep offline** — retains complete local copies for offline use. Manual sync and optional WorkManager periodic sync are **one way, NAS → Device**. Mirror files are excluded from cache cleanup.
 - **COPY_TO_SMB / Copy to SMB** — copies a user-selected Android Storage Access Framework source tree one way into a destination below the configured SMB connection root. Source files are never deleted, moved, or modified.
 - **Copy to SMB Preview** — shows SHA-256-based `New / Unchanged / Keep both / Replace + backup / Reuse existing` decisions before execution. Preview itself does not modify SMB.
+- **NAS destination folder picker** — the backup-rule editor can browse the NAS folder hierarchy, move to a parent folder, select a destination, and create a new folder at the current location when needed.
 - **Copy activity and history** — shows WorkManager state, progress, file counts, current source path, and copied/skipped/failed results. Manual copy can be cancelled; a failed-file-only retry path is implemented in the backend.
 - **Daily automatic backup** — each rule can use a local time, network requirement, and optional charging requirement. WorkManager may delay execution; if a configured condition is not met when a run starts, that run is skipped and recorded in history.
 - Browses a Room-backed local index. Normal browser navigation does not contact SMB directly.
@@ -44,7 +45,7 @@ Copy to SMB is not bidirectional synchronization. It is **Device → SMB only**.
 
 1. Open **Backup** and add a NAS connection. Enter the host, port, credentials, and SMB share name; the app checks the connection before continuing.
 2. Select the NAS connection and create a backup rule.
-3. Choose a folder on the phone and a destination folder on the NAS. Optionally enable daily backup and configure its local time, network, and charging conditions.
+3. Choose a folder on the phone, then use **Browse NAS folders** to navigate the NAS hierarchy and select the destination. Use **New folder** when a destination folder needs to be created. Optionally enable daily backup and configure its local time, network, and charging conditions.
 4. Use the rule history to review previous runs. Rules can be edited or deleted from the connection's backup list.
 5. For general NAS browsing, configure ON_DEMAND Cache or MIRROR / Keep offline storage in **Settings**, add/select a connection, and run a scan.
 
@@ -81,7 +82,7 @@ Instrumentation tests require a running emulator or connected device:
 
 ## Known limitations
 
-- Public Beta development line. Copy to SMB Preview, decision planning, activity/history, cancellation, and the failed-file retry backend are integrated into the default branch.
+- Public Beta development line. This development branch includes Copy to SMB Preview, decision planning, activity/history, cancellation, and the failed-file retry backend.
 - No SMB1, bidirectional sync, deletion propagation, streaming, partial-file open, or transfer resume. Interrupted transfers restart from byte zero.
 - WorkManager controls when automatic Copy to SMB work runs; the configured local time is a target, not an exact execution guarantee. A run skipped for unmet conditions is recorded and is not guaranteed to be retried that day.
 - Copy to SMB Preview does not lock the SMB state. A concurrent SMB change after Preview can change the final execution decision.

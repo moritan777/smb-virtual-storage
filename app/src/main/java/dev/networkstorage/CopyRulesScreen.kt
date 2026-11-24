@@ -3,7 +3,9 @@ package dev.networkstorage
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,8 +15,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -30,6 +36,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,6 +54,7 @@ import dev.networkstorage.data.db.CopyHistoryEntity
 import dev.networkstorage.data.db.CopyHistoryStatus
 import dev.networkstorage.data.db.CopyNetworkPolicy
 import dev.networkstorage.data.db.CopyRuleEntity
+import dev.networkstorage.domain.FolderNavigation
 import java.text.DateFormat
 import java.util.Date
 
@@ -54,6 +65,7 @@ internal fun CopyRulesScreen(
     onEditorVisibilityChange: (Boolean) -> Unit = {},
     simpleMode: Boolean = false,
     viewModel: CopyRulesViewModel = hiltViewModel(),
+    mainViewModel: MainViewModel? = null,
 ) {
     val rules by viewModel.rules.collectAsState()
     val executionStates by viewModel.executionStates.collectAsState()
@@ -67,7 +79,16 @@ internal fun CopyRulesScreen(
     DisposableEffect(Unit) { onDispose { onEditorVisibilityChange(false) } }
 
     if (editor != null) {
-        if (simpleMode) BackupRuleEditorScreen(viewModel, editor!!) else CopyRuleEditorScreen(viewModel, connection.connection.name, editor!!)
+        if (editor!!.mode == EditorMode.SIMPLE) {
+            BackupRuleEditorScreen(viewModel, editor!!, mainViewModel, connection)
+        } else {
+            CopyRuleEditorScreen(
+                viewModel = viewModel,
+                connectionName = connection.connection.name,
+                state = editor!!,
+                titleOverride = if (simpleMode) "Advanced backup settings" else null,
+            )
+        }
         return
     }
     if (preview.ruleId != null) {
@@ -91,7 +112,7 @@ internal fun CopyRulesScreen(
                     Text(connection.connection.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Button(onClick = viewModel::newRule) { Text(if (simpleMode) "+ Backup" else "+ Rule") }
+            Button(onClick = { if (simpleMode) viewModel.newBackup() else viewModel.newRule() }) { Text(if (simpleMode) "+ Backup" else "+ Rule") }
         }
         message?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall) }
         Spacer(Modifier.height(8.dp))
@@ -100,7 +121,7 @@ internal fun CopyRulesScreen(
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(if (simpleMode) "No backups configured" else "No Copy to SMB rules", fontWeight = FontWeight.SemiBold)
                     Text(if (simpleMode) "Choose a phone folder and set when it should be backed up to this NAS. The original files stay on the phone." else "Choose an Android folder and copy its files into this SMB connection. Source files are never deleted or moved.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(onClick = viewModel::newRule) { Text(if (simpleMode) "Create backup" else "Create rule") }
+                    Button(onClick = { if (simpleMode) viewModel.newBackup() else viewModel.newRule() }) { Text(if (simpleMode) "Create backup" else "Create rule") }
                 }
             }
         } else {
@@ -115,11 +136,36 @@ internal fun CopyRulesScreen(
 private fun CopyRuleCard(rule: CopyRuleEntity, execution: CopyExecutionUiState?, viewModel: CopyRulesViewModel, simpleMode: Boolean) {
     val busy = execution?.state in setOf(WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED, WorkInfo.State.RUNNING)
     val manualBusy = busy && execution?.automatic == false
+    var menuExpanded by remember { mutableStateOf(false) }
     ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape, colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(friendlyCopySource(rule.sourceTreeUri), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("NAS folder: ${rule.destinationPath.ifBlank { "Connection root" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (simpleMode) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f)) {
+                        Text(friendlyCopySource(rule.sourceTreeUri), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("NAS folder: ${rule.destinationPath.ifBlank { "Connection root" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Box {
+                        TextButton(onClick = { menuExpanded = true }) { Text("⋮") }
+                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Advanced settings") },
+                                onClick = { menuExpanded = false; viewModel.editRule(rule, EditorMode.ADVANCED) },
+                                enabled = !busy,
+                            )
+                            DropdownMenuItem(
+                                text = { Text("History") },
+                                onClick = { menuExpanded = false; viewModel.showActivity(rule) },
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("Delete") },
+                                onClick = { menuExpanded = false; viewModel.deleteRule(rule) },
+                                enabled = !busy,
+                            )
+                        }
+                    }
+                }
                 Text(
                     if (rule.automaticCopyEnabled) "Daily at ${copyTimeLabel(rule.scheduledTimeMinutesOfDay)}" else "Automatic backup off",
                     style = MaterialTheme.typography.labelMedium,
@@ -131,13 +177,13 @@ private fun CopyRuleCard(rule: CopyRuleEntity, execution: CopyExecutionUiState?,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 execution?.let { CopyExecutionStatus(it) }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = { viewModel.showActivity(rule) }) { Text("History") }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)) {
                     OutlinedButton(onClick = { viewModel.previewRule(rule) }, enabled = !busy) { Text("Test") }
-                    TextButton(onClick = { viewModel.deleteRule(rule) }, enabled = !busy) { Text("Delete") }
-                    Button(onClick = { viewModel.editRule(rule) }, enabled = !busy) { Text("Edit backup") }
+                    Button(onClick = { viewModel.editBackup(rule) }, enabled = !busy) { Text("Edit backup") }
                 }
             } else {
+                Text(friendlyCopySource(rule.sourceTreeUri), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("NAS folder: ${rule.destinationPath.ifBlank { "Connection root" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(if (rule.conflictPolicy == CopyConflictPolicy.KEEP_BOTH) "Keep Both" else "Replace + backup", style = MaterialTheme.typography.labelMedium)
                     Text(if (rule.automaticCopyEnabled) "Auto • ${copyTimeLabel(rule.scheduledTimeMinutesOfDay)}" else "Manual", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
@@ -197,20 +243,18 @@ private fun CopyPreviewScreen(
                 Text(if (simpleMode) "Backup test" else "Copy preview", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                 Text(rule?.let { friendlyCopySource(it.sourceTreeUri) } ?: "Copy rule", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (result != null && !simpleMode) FilledTonalButton(onClick = { viewModel.copyNow(rule!!) }) { Text("Copy now") }
+            if (result != null && !simpleMode && rule != null) FilledTonalButton(onClick = { viewModel.copyNow(rule) }) { Text("Copy now") }
         }
         if (state.loading) {
             Spacer(Modifier.height(12.dp))
             LinearProgressIndicator(Modifier.fillMaxWidth())
             Text("Inspecting source and SMB destinations…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            return
-        }
-        state.error?.let {
+        } else if (state.error != null) {
             Spacer(Modifier.height(8.dp))
-            ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape) { Text(it, Modifier.padding(14.dp), color = MaterialTheme.colorScheme.error) }
-            return
+            ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape) { Text(state.error, Modifier.padding(14.dp), color = MaterialTheme.colorScheme.error) }
+        } else if (result != null) {
+            CopyPreviewContent(result)
         }
-        result?.let { CopyPreviewContent(it) }
     }
 }
 
@@ -228,7 +272,7 @@ private fun CopyPreviewContent(result: CopyDryRunResult) {
                 }
             }
         }
-        items(result.items, key = { it.sourceRelativePath }) { item ->
+        itemsIndexed(result.items, key = { index, item -> "${item.sourceRelativePath}_$index" }) { _, item ->
             ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape, colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                 Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -336,13 +380,82 @@ private fun copyHistoryStatusLabel(status: CopyHistoryStatus) = when (status) {
 }
 
 @Composable
-private fun BackupRuleEditorScreen(viewModel: CopyRulesViewModel, state: CopyRuleEditorState) {
+private fun BackupRuleEditorScreen(viewModel: CopyRulesViewModel, state: CopyRuleEditorState, mainViewModel: MainViewModel?, connection: ConnectionSummary) {
+    val remotePicker by (mainViewModel?.remotePicker ?: kotlinx.coroutines.flow.MutableStateFlow(RemotePickerState())).collectAsState()
+    var showCreateFolder by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var newFolderName by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let(viewModel::selectSourceTree) }
+    val displayedPath = listOf(connection.connection.basePath, remotePicker.path)
+        .filter(String::isNotBlank)
+        .joinToString("/")
+    if (remotePicker.visible) {
+        AlertDialog(
+            onDismissRequest = { mainViewModel?.closeRemotePicker() },
+            title = { Text("NAS folders") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("${connection.connection.share} /${displayedPath.takeIf(String::isNotBlank)?.let { " $it" }.orEmpty()}")
+                    if (remotePicker.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    remotePicker.error?.let { Text("Could not browse: $it", color = MaterialTheme.colorScheme.error) }
+                    if (remotePicker.path.isNotBlank()) {
+                        TextButton(onClick = { mainViewModel?.browseBackupFolder(connection, FolderNavigation.parent(remotePicker.path)) }) { Text("← Up one level") }
+                    }
+                    androidx.compose.foundation.lazy.LazyColumn(Modifier.height(240.dp)) {
+                        items(remotePicker.folders) { folder ->
+                            Row(
+                                Modifier.fillMaxWidth().clickable { mainViewModel?.browseBackupFolder(connection, folder) }.padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text("📁")
+                                Text(folder.substringAfterLast('/'))
+                            }
+                        }
+                    }
+                    TextButton(onClick = { showCreateFolder = true }) { Text("+ New folder") }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.updateEditor(state.copy(destinationPath = remotePicker.path))
+                        mainViewModel?.closeRemotePicker()
+                    },
+                    enabled = !remotePicker.loading && remotePicker.error == null,
+                ) { Text("Use this folder") }
+            },
+            dismissButton = { TextButton(onClick = { mainViewModel?.closeRemotePicker() }) { Text("Cancel") } },
+        )
+    }
+    if (showCreateFolder) {
+        AlertDialog(
+            onDismissRequest = { showCreateFolder = false; newFolderName = "" },
+            title = { Text("Create NAS folder") },
+            text = {
+                OutlinedTextField(
+                    value = newFolderName,
+                    onValueChange = { newFolderName = it },
+                    label = { Text("Folder name") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        mainViewModel?.createBackupFolder(connection, newFolderName)
+                        showCreateFolder = false
+                        newFolderName = ""
+                    },
+                    enabled = newFolderName.trim().isNotBlank() && !remotePicker.loading,
+                ) { Text("Create") }
+            },
+            dismissButton = { TextButton(onClick = { showCreateFolder = false; newFolderName = "" }) { Text("Cancel") } },
+        )
+    }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = ScreenPadding), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Spacer(Modifier.height(8.dp))
-            Text(if (state.id == null) "Backup Setup" else "Edit Backup", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Text("Choose a folder on your phone and a destination on your NAS. Set when your backup should run.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (state.id == null) "Create backup" else "Edit backup", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text("Choose what to back up and when. Advanced copy behavior keeps its safe defaults.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             Text("Phone folder", style = MaterialTheme.typography.labelMedium)
@@ -350,14 +463,17 @@ private fun BackupRuleEditorScreen(viewModel: CopyRulesViewModel, state: CopyRul
             OutlinedButton(onClick = { picker.launch(null) }, modifier = Modifier.fillMaxWidth()) { Text("Choose folder") }
         }
         item {
-            OutlinedTextField(
-                value = state.destinationPath,
-                onValueChange = { viewModel.updateEditor(state.copy(destinationPath = it)) },
-                label = { Text("NAS destination folder") },
-                placeholder = { Text("Blank = NAS root") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
+            Text("NAS destination", style = MaterialTheme.typography.labelMedium)
+            Text(
+                if (state.destinationPath.isBlank()) "NAS shared folder root" else state.destinationPath,
+                style = MaterialTheme.typography.bodyMedium,
             )
+            OutlinedButton(
+                onClick = { mainViewModel?.openBackupFolderPicker(connection) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = mainViewModel != null,
+            ) { Text("Browse NAS folders") }
+            Text("Choose a folder from the NAS hierarchy or create a new one.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item { ToggleRow("Automatic daily backup", state.automaticCopyEnabled) { viewModel.updateEditor(state.copy(automaticCopyEnabled = it)) } }
         if (state.automaticCopyEnabled) {
@@ -398,7 +514,7 @@ private fun BackupRuleEditorScreen(viewModel: CopyRulesViewModel, state: CopyRul
 }
 
 @Composable
-private fun CopyRuleEditorScreen(viewModel: CopyRulesViewModel, connectionName: String, state: CopyRuleEditorState) {
+private fun CopyRuleEditorScreen(viewModel: CopyRulesViewModel, connectionName: String, state: CopyRuleEditorState, titleOverride: String? = null) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let(viewModel::selectSourceTree) }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = ScreenPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
@@ -406,7 +522,7 @@ private fun CopyRuleEditorScreen(viewModel: CopyRulesViewModel, connectionName: 
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 TextButton(onClick = viewModel::dismissEditor) { Text("←") }
                 Column {
-                    Text(if (state.id == null) "New copy rule" else "Edit copy rule", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                    Text(titleOverride ?: if (state.id == null) "New copy rule" else "Edit copy rule", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                     Text(connectionName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }

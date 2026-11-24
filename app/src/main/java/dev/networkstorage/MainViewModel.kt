@@ -280,6 +280,76 @@ class MainViewModel @Inject constructor(
     private suspend fun <T> withPickerCredential(value: ConnectionEditorState, password: String, block: suspend (ConnectionConfig, Credential) -> T): Result<T> { val credential = if (password.isNotEmpty()) Credential(password.toCharArray()) else value.id?.let(credentials::get) ?: return Result.failure(IllegalArgumentException("CREDENTIAL_REQUIRED")); val config = ConnectionConfig(value.id ?: "picker", value.name, value.host, value.port.toIntOrNull() ?: 445, value.share, "", value.username, value.domain.takeIf(String::isNotBlank), value.mode); return try { Result.success(block(config, credential)) } catch (error: Throwable) { Result.failure(error) } finally { credential.password.fill('\u0000') } }
     private fun safePickerError(error: Throwable) = (error as? dev.networkstorage.domain.SmbFailure)?.category?.name ?: if (error.message == "CREDENTIAL_REQUIRED") "CREDENTIAL_REQUIRED" else "CONNECTION"
     fun closeRemotePicker() { remotePicker.value = RemotePickerState() }
+
+    fun openBackupFolderPicker(connection: ConnectionSummary) = browseBackupFolder(connection, "")
+
+    fun browseBackupFolder(connection: ConnectionSummary, path: String) = viewModelScope.launch {
+        val normalized = runCatching { RemotePath.normalize(path) }.getOrElse {
+            remotePicker.value = remotePicker.value.copy(error = "INVALID_PATH", loading = false)
+            return@launch
+        }
+        remotePicker.value = RemotePickerState(
+            visible = true,
+            share = connection.connection.share,
+            path = normalized,
+            loading = true,
+        )
+        val result = runCatching {
+            val c = connection.connection
+            val credential = credentials.get(c.id) ?: error("CREDENTIAL_REQUIRED")
+            try {
+                val config = ConnectionConfig(
+                    c.id, c.name, c.host, c.port, c.share, c.basePath,
+                    c.username, c.domain, c.rootMode,
+                )
+                NetworkFolderPickerPolicy.folders(smb.list(config, credential, normalized))
+            } finally {
+                credential.password.fill('\u0000')
+            }
+        }
+        result.onSuccess {
+            remotePicker.value = remotePicker.value.copy(folders = it, loading = false, error = null)
+        }.onFailure {
+            remotePicker.value = remotePicker.value.copy(loading = false, error = safePickerError(it))
+        }
+    }
+
+    fun createBackupFolder(connection: ConnectionSummary, name: String) = viewModelScope.launch {
+        val picker = remotePicker.value
+        if (!picker.visible || picker.share != connection.connection.share) {
+            message.value = "Open the NAS folder picker before creating a folder"
+            return@launch
+        }
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) {
+            message.value = "Enter a folder name"
+            return@launch
+        }
+        val relativePath = runCatching { RemotePath.join(picker.path, cleanName) }.getOrElse {
+            message.value = "Enter a valid folder name"
+            return@launch
+        }
+        val result = runCatching {
+            val c = connection.connection
+            val credential = credentials.get(c.id) ?: error("CREDENTIAL_REQUIRED")
+            try {
+                val config = ConnectionConfig(
+                    c.id, c.name, c.host, c.port, c.share, c.basePath,
+                    c.username, c.domain, c.rootMode,
+                )
+                smb.createDirectory(config, credential, relativePath)
+            } finally {
+                credential.password.fill('\u0000')
+            }
+        }
+        result.onSuccess {
+            message.value = "Folder created"
+            browseBackupFolder(connection, picker.path)
+        }.onFailure {
+            message.value = UserFacingError.message(UserFacingError.code(it))
+        }
+    }
+
     fun startScan(connection: ConnectionSummary) = startScan(connection.connection)
     private fun startScan(connection: ConnectionEntity) {
         val request = OneTimeWorkRequestBuilder<ScanWorker>().setInputData(workDataOf(ScanWorker.KEY_CONNECTION_ID to connection.id)).build()

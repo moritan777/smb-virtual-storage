@@ -1,6 +1,6 @@
 # V1 implementation addendum
 
-This document supplements `docs/v1-spec.md` for implementation behavior added after the original V1 specification was written. The V1 specification remains the normative product and security contract; this addendum records extensions currently integrated into the default branch.
+This document supplements `docs/v1-spec.md` for implementation behavior added after the original V1 specification was written. The V1 specification remains the normative product and security contract; this addendum records implementation extensions in the current code line. Check the target branch history to determine whether each extension has been merged into the default branch.
 
 ## Copy to SMB decision planning
 
@@ -37,6 +37,16 @@ A dedicated Backup area provides a focused workflow for NAS connections and phon
 Each backup rule can be configured for daily execution at a selected local time, with a network policy (any connected network or Wi-Fi) and an optional charging requirement. WorkManager can delay execution; a run that starts while its configured conditions are not met is skipped and recorded in history. The configured time is not an exact execution-time guarantee.
 
 Deleting a connection removes its app-side backup configuration, history, local index, and saved login. It does not delete NAS-resident files or the source files on the phone.
+
+## NAS destination folder picker
+
+The Backup rule editor includes a NAS destination picker. It lists folders from the selected SMB share below the configured connection root, supports navigation to a parent folder, and applies the current folder as the rule destination. The stored destination remains relative to the connection root.
+
+The picker can create a new directory at its current location. The folder name is trimmed and must not be blank; the resulting path is normalized before it is passed to `SmbClient.createDirectory`. This is a deliberately narrow directory-creation operation, not a general file-write API. File transfers continue to use the separate `SmbCopyClient` boundary. The picker uses the selected connection's saved credential and clears the password character array after the operation.
+
+## Test Preview stability
+
+The Backup rule card's **Test** action opens the Copy to SMB dry-run preview. The preview screen renders loading, error, and result states as mutually exclusive content branches rather than returning early from inside its Compose layout. Preview result rows use keys that remain unique even if source-relative paths repeat. The ViewModel handles a missing connection and maps known credential, SAF source-tree, invalid or overlapping source-path, and SMB failures to actionable user-facing messages. Coroutine cancellation is rethrown instead of being treated as an ordinary preview error.
 
 ## Folder cache marker
 

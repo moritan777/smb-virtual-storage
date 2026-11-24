@@ -101,6 +101,9 @@ class AppDatabaseTest {
         val readOnlySmb = object : SmbClient {
             override suspend fun list(connection: ConnectionConfig, credential: Credential, relativeDirectory: String): List<RemoteEntry> = error("SMB must not be contacted by local deletion")
             override suspend fun openRead(connection: ConnectionConfig, credential: Credential, relativePath: String): RemoteReadHandle = error("SMB must not be contacted by local deletion")
+            override suspend fun createDirectory(connection: ConnectionConfig, credential: Credential, relativePath: String) {
+                throw UnsupportedOperationException("Directory creation is not used in this test")
+            }
         }
         IndexRepository(dao, credentials, readOnlySmb).deleteConnection("c")
         assertTrue(credentialRemoved)
@@ -121,6 +124,9 @@ class AppDatabaseTest {
         val readOnly = object : SmbClient {
             override suspend fun list(connection: ConnectionConfig, credential: Credential, relativeDirectory: String) = emptyList<RemoteEntry>()
             override suspend fun openRead(connection: ConnectionConfig, credential: Credential, relativePath: String): RemoteReadHandle = error("not used")
+            override suspend fun createDirectory(connection: ConnectionConfig, credential: Credential, relativePath: String) {
+                throw UnsupportedOperationException("Directory creation is not used in this test")
+            }
         }
         val repository = IndexRepository(dao, credentialStore, readOnly)
         repository.updateConnection("c", "New", "host", 445, "share", "folder", "user", null, null, FolderMode.ON_DEMAND)
