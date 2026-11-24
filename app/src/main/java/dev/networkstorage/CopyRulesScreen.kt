@@ -46,6 +46,7 @@ import dev.networkstorage.data.db.CopyHistoryEntity
 import dev.networkstorage.data.db.CopyHistoryStatus
 import dev.networkstorage.data.db.CopyNetworkPolicy
 import dev.networkstorage.data.db.CopyRuleEntity
+import dev.networkstorage.domain.FolderNavigation
 import java.text.DateFormat
 import java.util.Date
 
