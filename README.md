@@ -10,11 +10,13 @@ Network Storage is a non-root Android 10+ app that stores a user-selected SMB2/S
 
 ## What it does
 
+- **Backup settings** — provides a dedicated backup area where NAS connections and backup rules can be created, edited, reviewed, and deleted. A rule selects a phone folder, a NAS destination, and optional daily execution settings.
 - **ON_DEMAND** — scans NAS metadata, downloads a complete file when opened, and keeps it in an evictable local cache. The cache is cleaned by LRU when the configured limit is exceeded.
 - **MIRROR / Keep offline** — retains complete local copies for offline use. Manual sync and optional WorkManager periodic sync are **one way, NAS → Device**. Mirror files are excluded from cache cleanup.
 - **COPY_TO_SMB / Copy to SMB** — copies a user-selected Android Storage Access Framework source tree one way into a destination below the configured SMB connection root. Source files are never deleted, moved, or modified.
 - **Copy to SMB Preview** — shows SHA-256-based `New / Unchanged / Keep both / Replace + backup / Reuse existing` decisions before execution. Preview itself does not modify SMB.
-- **Copy to SMB Activity / progress / cancellation** — shows WorkManager state, file counts, current source path, and copied/skipped/failed counts, and allows manual copy cancellation. A failed-file-only retry path is also implemented in the execution backend.
+- **Copy activity and history** — shows WorkManager state, progress, file counts, current source path, and copied/skipped/failed results. Manual copy can be cancelled; a failed-file-only retry path is implemented in the backend.
+- **Daily automatic backup** — each rule can use a local time, network requirement, and optional charging requirement. WorkManager may delay execution; if a configured condition is not met when a run starts, that run is skipped and recorded in history.
 - Browses a Room-backed local index. Normal browser navigation does not contact SMB directly.
 - Opens only complete local files through read-only Android content URIs.
 - Uses SMB2/SMB3. **SMB1 is not supported.** Normal SMB access is read-only; only Copy to SMB uses a narrowly scoped write boundary.
@@ -25,9 +27,9 @@ An offline or failed scan preserves the previous Room index. Completed Mirror fi
 
 A folder shows a local-data marker only when **some cached file exists anywhere below that folder**. The marker is navigation guidance; it does not mean that the entire folder is available offline.
 
-## Copy to SMB
+## Copy to SMB and phone backups
 
-Copy to SMB is not bidirectional synchronization. It is **Device → SMB only**.
+Copy to SMB is not bidirectional synchronization. It is **Device → SMB only**. The dedicated Backup area uses this same one-way copy mechanism.
 
 - The source is a SAF-selected folder.
 - The destination is relative to the configured connection root.
@@ -40,12 +42,11 @@ Copy to SMB is not bidirectional synchronization. It is **Device → SMB only**.
 
 ## Getting started
 
-1. In **Settings**, select SAF folders for ON_DEMAND Cache and Mirror / Keep offline data, and optionally set the cache limit.
-2. Add the NAS host, share/base folder, username, and password; choose ON_DEMAND or MIRROR as needed.
-3. Run a scan and browse the indexed folders.
-4. In ON_DEMAND, open a file to download it completely before launching a viewer.
-5. In MIRROR / Keep offline, run a manual update or enable periodic update.
-6. For Copy to SMB, create a rule for the connection and configure the source folder, destination, conflict policy, and automatic execution constraints. Use **Preview** to inspect the planned operations before copying.
+1. Open **Backup** and add a NAS connection. Enter the host, port, credentials, and SMB share name; the app checks the connection before continuing.
+2. Select the NAS connection and create a backup rule.
+3. Choose a folder on the phone and a destination folder on the NAS. Optionally enable daily backup and configure its local time, network, and charging conditions.
+4. Use the rule history to review previous runs. Rules can be edited or deleted from the connection's backup list.
+5. For general NAS browsing, configure ON_DEMAND Cache or MIRROR / Keep offline storage in **Settings**, add/select a connection, and run a scan.
 
 Credentials are protected with Android Keystore and are not shown again after saving.
 
@@ -80,9 +81,9 @@ Instrumentation tests require a running emulator or connected device:
 
 ## Known limitations
 
-- Public Beta development line. `feature/copy-decision-dry-run` includes Copy to SMB Preview, decision planning, Activity, cancellation, and a failed-file retry backend path.
+- Public Beta development line. Copy to SMB Preview, decision planning, activity/history, cancellation, and the failed-file retry backend are integrated into the default branch.
 - No SMB1, bidirectional sync, deletion propagation, streaming, partial-file open, or transfer resume. Interrupted transfers restart from byte zero.
-- WorkManager determines the execution time for automatic Copy to SMB; it is not an exact clock schedule.
+- WorkManager controls when automatic Copy to SMB work runs; the configured local time is a target, not an exact execution guarantee. A run skipped for unmet conditions is recorded and is not guaranteed to be retried that day.
 - Copy to SMB Preview does not lock the SMB state. A concurrent SMB change after Preview can change the final execution decision.
 - Mirror local-only and local-newer files are conservatively retained and are not automatically deleted or overwritten.
 - Real-device behavior depends on the selected document provider, local storage, network stability, and an installed viewer for the file type.
