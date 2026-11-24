@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
@@ -34,6 +35,7 @@ import dev.networkstorage.data.db.ConnectionSummary
 internal fun BackupSettingsScreen(viewModel: MainViewModel, onEditorVisibilityChange: (Boolean) -> Unit = {}) {
     val connections by viewModel.connections.collectAsState()
     var selected by remember { mutableStateOf<ConnectionSummary?>(null) }
+    var pendingDelete by remember { mutableStateOf<ConnectionSummary?>(null) }
     var showNewNas by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var host by remember { mutableStateOf("") }
@@ -42,6 +44,27 @@ internal fun BackupSettingsScreen(viewModel: MainViewModel, onEditorVisibilityCh
     var password by remember { mutableStateOf("") }
     var domain by remember { mutableStateOf("") }
     var share by remember { mutableStateOf("") }
+
+    pendingDelete?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Delete backup connection?") },
+            text = {
+                Text(
+                    "This removes the NAS connection from this app, including its backup settings, history, local index, and saved login. Files already stored on the NAS and files on your phone will not be deleted."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteConnection(target)
+                    pendingDelete = null
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+            },
+        )
+    }
 
     val current = selected
     BackHandler(enabled = current != null || showNewNas) {
@@ -136,6 +159,10 @@ internal fun BackupSettingsScreen(viewModel: MainViewModel, onEditorVisibilityCh
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text("Configure backups →", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        TextButton(
+                            onClick = { pendingDelete = summary },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Delete") }
                     }
                 }
             }
