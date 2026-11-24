@@ -34,7 +34,7 @@ import dev.networkstorage.data.db.ConnectionSummary
 internal fun BackupSettingsScreen(viewModel: MainViewModel, onEditorVisibilityChange: (Boolean) -> Unit = {}) {
     val connections by viewModel.connections.collectAsState()
     var selected by remember { mutableStateOf<ConnectionSummary?>(null) }
-    var showNewNas by remember { mutableStateOf(connections.isEmpty()) }
+    var showNewNas by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var host by remember { mutableStateOf("") }
     var port by remember { mutableStateOf("445") }
@@ -136,6 +136,16 @@ internal fun BackupSettingsScreen(viewModel: MainViewModel, onEditorVisibilityCh
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text("Configure backups →", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+            if (connections.isEmpty()) {
+                item {
+                    ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("No NAS connections yet", fontWeight = FontWeight.SemiBold)
+                            Text("Enter your NAS address and login details to create the first backup.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
