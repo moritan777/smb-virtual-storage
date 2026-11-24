@@ -16,6 +16,7 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.networkstorage.data.IndexRepository
+import dev.networkstorage.data.copy.CopyToSmbScheduler
 import dev.networkstorage.data.cache.CachePolicy
 import dev.networkstorage.data.cache.CacheRepository
 import dev.networkstorage.data.credential.CredentialStore
@@ -190,7 +191,21 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun deleteConnection(connection: ConnectionSummary) = viewModelScope.launch { workManager.cancelUniqueWork("manual-scan-${connection.connection.id}"); runCatching { repository.deleteConnection(connection.connection.id) }.onSuccess { if (selectedConnection.value?.connection?.id == connection.connection.id) selectedConnection.value = null; message.value = "Local connection and index deleted" }.onFailure { message.value = "Could not safely delete the local connection" } }
+    fun deleteConnection(connection: ConnectionSummary) = viewModelScope.launch {
+        val connectionId = connection.connection.id
+        workManager.cancelUniqueWork("manual-scan-$connectionId")
+        dao.allCopyRules().filter { it.connectionId == connectionId }.forEach { rule ->
+            workManager.cancelUniqueWork(CopyToSmbScheduler.manualName(rule.id))
+            workManager.cancelUniqueWork(CopyToSmbScheduler.periodicName(rule.id))
+            workManager.cancelUniqueWork(CopyToSmbScheduler.retryName(rule.id))
+        }
+        runCatching { repository.deleteConnection(connectionId) }
+            .onSuccess {
+                if (selectedConnection.value?.connection?.id == connectionId) selectedConnection.value = null
+                message.value = "Local connection and index deleted"
+            }
+            .onFailure { message.value = "Could not safely delete the local connection" }
+    }
     fun deleteRootIndex(connection: ConnectionSummary) = viewModelScope.launch { workManager.cancelUniqueWork("manual-scan-${connection.connection.id}"); runCatching { repository.deleteRootIndex(connection.connection.id) }.onSuccess { message.value = "Local index target deleted" }.onFailure { message.value = "Could not delete the local index target" } }
     fun setCacheLimitGib(input: String) = viewModelScope.launch { SettingsRepository.gibToBytes(input).onSuccess { bytes -> settings.setCacheLimitBytes(bytes); message.value = "Cache limit saved" }.onFailure { message.value = "Enter a whole number of at least 1 GB" } }
     fun saveStorageRoot(kind: StorageRootKind, uri: Uri) = viewModelScope.launch { runCatching { settings.setStorageRoot(kind, uri.toString()) }.onSuccess { message.value = "Storage folder saved; existing files were not moved" }.onFailure { message.value = "Storage folder overlaps Cache, Mirror, or an existing Copy source" } }
