@@ -30,7 +30,9 @@ class CopyWorkSelectionTest {
     }
 
     private fun work(state: WorkInfo.State, kind: String): WorkInfo =
-        WorkInfo.Builder(UUID.nameUUIDFromBytes(kind.toByteArray()), emptyList())
-            .setState(state)
-            .build()
+        WorkInfo(
+            id = UUID.nameUUIDFromBytes(kind.toByteArray()),
+            state = state,
+            tags = setOf(kind)
+        )
 }

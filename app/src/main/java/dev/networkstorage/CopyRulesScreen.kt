@@ -226,7 +226,11 @@ private fun CopyPreviewContent(result: CopyDryRunResult) {
             ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape, colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                 Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(item.decision?.let(::copyDecisionLabel) ?: "Unable to determine", fontWeight = FontWeight.SemiBold, color = item.decision?.let(::copyDecisionColor) ?: MaterialTheme.colorScheme.error)
+                        Text(
+                            text = item.decision?.let(::copyDecisionLabel) ?: "Unable to determine",
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (item.decision != null) copyDecisionColor(item.decision) else MaterialTheme.colorScheme.error
+                        )
                         Text(formatBytes(item.sourceSize), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Text(item.sourceRelativePath, maxLines = 2, overflow = TextOverflow.Ellipsis)

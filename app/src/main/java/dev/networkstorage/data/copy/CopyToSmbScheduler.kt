@@ -97,8 +97,7 @@ class CopyToSmbScheduler @Inject constructor(
     private fun scheduledRequest(rule: CopyRuleEntity, scheduledAt: Long) =
         OneTimeWorkRequestBuilder<CopyToSmbWorker>()
             .setInitialDelay((scheduledAt - System.currentTimeMillis()).coerceAtLeast(0L), TimeUnit.MILLISECONDS)
-            .setInputData(input(rule.id, CopyToSmbWorker.TRIGGER_SCHEDULED).toBuilder()
-                .putLong(CopyToSmbWorker.KEY_SCHEDULED_AT, scheduledAt).build())
+            .setInputData(input(rule.id, CopyToSmbWorker.TRIGGER_SCHEDULED, scheduledAt = scheduledAt))
             .setConstraints(Constraints.Builder().build())
             .addTag(scheduleTag(rule.id))
             .build()
@@ -112,9 +111,12 @@ class CopyToSmbScheduler @Inject constructor(
         return candidate.toInstant().toEpochMilli()
     }
 
-    private fun input(ruleId: String, trigger: String, paths: Collection<String> = emptyList()) = Data.Builder()
+    private fun input(ruleId: String, trigger: String, paths: Collection<String> = emptyList(), scheduledAt: Long? = null) = Data.Builder()
         .putString(CopyToSmbWorker.KEY_RULE_ID, ruleId).putString(CopyToSmbWorker.KEY_TRIGGER, trigger)
-        .apply { if (paths.isNotEmpty()) putStringArray(CopyToSmbWorker.KEY_ONLY_PATHS, paths.toTypedArray()) }.build()
+        .apply {
+            if (paths.isNotEmpty()) putStringArray(CopyToSmbWorker.KEY_ONLY_PATHS, paths.toTypedArray())
+            if (scheduledAt != null) putLong(CopyToSmbWorker.KEY_SCHEDULED_AT, scheduledAt)
+        }.build()
 
     companion object {
         private const val MANUAL_RUN_TAG_PREFIX = "copy-to-smb-manual-enqueued-at-"
