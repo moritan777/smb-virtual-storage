@@ -204,7 +204,7 @@ class MainViewModel @Inject constructor(
             try {
                 val config = ConnectionConfig(c.id, c.name, c.host, c.port, c.share, "", c.username, c.domain, c.rootMode)
                 NetworkFolderPickerPolicy.folders(smb.list(config, credential, normalized))
-            } finally { credential.password.fill('\\u0000') }
+            } finally { credential.password.fill('\u0000') }
         }
         result.onSuccess { remotePicker.value = remotePicker.value.copy(folders = it, loading = false, error = null) }
             .onFailure { remotePicker.value = remotePicker.value.copy(loading = false, error = safePickerError(it)) }
@@ -212,7 +212,7 @@ class MainViewModel @Inject constructor(
 
     fun createBackupFolder(connection: ConnectionSummary, name: String) = viewModelScope.launch {
         val cleanName = name.trim()
-        if (cleanName.isBlank() || cleanName.contains('/') || cleanName.contains('\\\\')) {
+        if (cleanName.isBlank() || cleanName.contains('/') || cleanName.contains('\\')) {
             message.value = "Enter a folder name without path separators"
             return@launch
         }
@@ -224,7 +224,7 @@ class MainViewModel @Inject constructor(
             try {
                 val config = ConnectionConfig(c.id, c.name, c.host, c.port, c.share, "", c.username, c.domain, c.rootMode)
                 smb.createDirectory(config, credential, relative)
-            } finally { credential.password.fill('\\u0000') }
+            } finally { credential.password.fill('\u0000') }
         }
         result.onSuccess {
             message.value = "Folder created"
