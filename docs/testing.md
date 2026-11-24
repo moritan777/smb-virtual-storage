@@ -10,6 +10,20 @@ The Copy to SMB decision engine is side-effect free and covers `NEW / UNCHANGED 
 
 Room / Android instrumentation covers successful scan reconciliation, Connection cascade deletion, root-index deletion, parent-scoped paging, Unicode filenames, credential replacement, Preferences DataStore, SAF tree separation, and read-only viewer intents. Folder cache-marker acceptance requires a folder with a cached descendant to expose the marker state and a folder with no cached descendant not to expose it.
 
+## Backup rules and daily scheduling
+
+The Backup screen is a UI workflow over the existing connection and Copy to SMB rule models. Verify the following on an emulator or device:
+
+- A NAS connection is not saved unless the connection check succeeds.
+- The connection form accepts host, port, username, password, optional domain, and SMB share name; the share field is a share name, not a path.
+- A backup rule retains its SAF source-tree permission and destination relative to the selected connection root.
+- Editing a rule updates its daily schedule; disabling automatic execution cancels the scheduled unique work.
+- Deleting a connection removes app-side rules/history and saved login but leaves NAS-resident files and phone source files untouched.
+- Daily work calculates the next occurrence using the device's local time zone and re-enqueues the next occurrence when a scheduled worker starts.
+- Charging and network policies are checked by the worker at run time. When a condition is not met, the run is recorded as skipped and does not copy files.
+- WorkManager may run later than the configured local time; do not test it as an exact alarm or assume a skipped run is retried later that day.
+- Manual, daily, and retry work remain separate unique work streams for the same rule.
+
 ## Copy to SMB acceptance checks
 
 At minimum verify:
@@ -22,7 +36,7 @@ At minimum verify:
 - `.part` data is removed on failure and cancellation.
 - Source files are never modified or deleted by copying.
 - Deletion is never propagated.
-- Manual, periodic, and retry work do not interfere across the same rule.
+- Manual, daily, and retry work do not interfere across the same rule.
 - Activity exposes file-level results and error / backup information.
 - Failed source paths can be passed to a retry work request.
 
@@ -36,7 +50,7 @@ Mirror acceptance should verify that only NAS-only / NAS-newer files are copied 
 
 ## Database migration
 
-Keep production migrations aligned with the Room schemas under `app/schemas`. Prefer validating production migration objects with `MigrationTestHelper` rather than copying SQL into tests.
+Keep production migrations aligned with the Room schemas under `app/schemas`. Prefer validating production migration objects with `MigrationTestHelper` rather than copying SQL into tests. Schema version 5 adds `scheduledTimeMinutesOfDay` to copy rules with a default of 04:00 (240 minutes after midnight); verify that existing rules migrate with the default and remain disabled for automatic execution unless explicitly enabled.
 
 ## Commands
 
