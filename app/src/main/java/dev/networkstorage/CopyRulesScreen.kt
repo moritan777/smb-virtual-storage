@@ -331,7 +331,7 @@ private fun copyHistoryStatusLabel(status: CopyHistoryStatus) = when (status) {
 private fun BackupRuleEditorScreen(viewModel: CopyRulesViewModel, state: CopyRuleEditorState, mainViewModel: MainViewModel?, connection: ConnectionSummary) {
     val remotePicker by (mainViewModel?.remotePicker ?: kotlinx.coroutines.flow.MutableStateFlow(RemotePickerState())).collectAsState()
     var showCreateFolder by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    var newFolderName by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(\"\") }
+    var newFolderName by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let(viewModel::selectSourceTree) }
     if (remotePicker.visible) {
         AlertDialog(
