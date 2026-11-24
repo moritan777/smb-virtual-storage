@@ -77,7 +77,7 @@ class SmbjClient @Inject constructor() : SmbClient {
         val relative = RemotePath.normalize(relativePath)
         require(relative.isNotBlank()) { "Directory name is required" }
         val root = RemotePath.normalize(connection.basePath)
-        val remotePath = listOf(root, relative).filter { it.isNotBlank() }.joinToString("\\\\")
+        val remotePath = listOf(root, relative).filter { it.isNotBlank() }.joinToString("\\")
         try {
             SMBClient().use { client ->
                 client.connect(connection.host, connection.port).use { transport ->
@@ -91,7 +91,7 @@ class SmbjClient @Inject constructor() : SmbClient {
         } catch (error: Throwable) {
             if (error is kotlinx.coroutines.CancellationException) throw error
             throw SmbFailure(mapError(error), error)
-        } finally { credential.password.fill('\\u0000') }
+        } finally { credential.password.fill('\u0000') }
     }
 
     private fun mapError(error: Throwable): NetworkError = when (error) {
