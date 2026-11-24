@@ -72,7 +72,7 @@ internal fun CopyRulesScreen(
     }
     if (preview.ruleId != null) {
         val rule = rules.firstOrNull { it.id == preview.ruleId }
-        CopyPreviewScreen(rule, preview, viewModel)
+        CopyPreviewScreen(rule, preview, viewModel, simpleMode)
         return
     }
     if (selectedActivityRuleId != null) {
@@ -133,6 +133,7 @@ private fun CopyRuleCard(rule: CopyRuleEntity, execution: CopyExecutionUiState?,
                 execution?.let { CopyExecutionStatus(it) }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = { viewModel.showActivity(rule) }) { Text("History") }
+                    OutlinedButton(onClick = { viewModel.previewRule(rule) }, enabled = !busy) { Text("Test") }
                     TextButton(onClick = { viewModel.deleteRule(rule) }, enabled = !busy) { Text("Delete") }
                     Button(onClick = { viewModel.editRule(rule) }, enabled = !busy) { Text("Edit backup") }
                 }
@@ -181,17 +182,22 @@ private fun CopyExecutionStatus(value: CopyExecutionUiState) {
 }
 
 @Composable
-private fun CopyPreviewScreen(rule: CopyRuleEntity?, state: CopyPreviewState, viewModel: CopyRulesViewModel) {
+private fun CopyPreviewScreen(
+    rule: CopyRuleEntity?,
+    state: CopyPreviewState,
+    viewModel: CopyRulesViewModel,
+    simpleMode: Boolean,
+) {
     val result = state.result
     Column(Modifier.fillMaxSize().padding(horizontal = ScreenPadding)) {
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = viewModel::clearPreview) { Text("←") }
             Column(Modifier.weight(1f)) {
-                Text("Copy preview", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                Text(if (simpleMode) "Backup test" else "Copy preview", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                 Text(rule?.let { friendlyCopySource(it.sourceTreeUri) } ?: "Copy rule", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (result != null) FilledTonalButton(onClick = { viewModel.copyNow(rule!!) }) { Text("Copy now") }
+            if (result != null && !simpleMode) FilledTonalButton(onClick = { viewModel.copyNow(rule!!) }) { Text("Copy now") }
         }
         if (state.loading) {
             Spacer(Modifier.height(12.dp))
