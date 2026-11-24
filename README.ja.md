@@ -81,7 +81,7 @@ instrumentation test は起動済みのエミュレーターまたは接続済�
 
 ## 既知の制限
 
-- Public Beta の開発系列です。`feature/copy-decision-dry-run` では Copy to SMB の Preview、実行判断、Activity、キャンセル、失敗ファイル再試行基盤を含みます。
+- Public Beta の開発系列です。Copy to SMB の Preview、実行判断、Activity / 履歴、キャンセル、失敗ファイル再試行のバックエンドは default branch に統合済みです。
 - SMB1、双方向同期、削除伝播、ストリーミング、部分ファイルのオープン、転送レジュームには対応していません。中断された転送は先頭から再開します。
 - Copy to SMB の自動実行は WorkManager が管理します。設定したローカル時刻は目標時刻であり、正確な実行時刻を保証しません。条件不足でスキップされた実行は履歴に残りますが、同日中の再実行は保証されません。
 - Copy to SMB の Preview は実行時の SMB 状態を保証しません。Preview 後に他の SMB クライアントが変更した場合、実行時の判断が変わる可能性があります。
