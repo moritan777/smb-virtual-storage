@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +19,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -33,7 +36,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -73,7 +79,16 @@ internal fun CopyRulesScreen(
     DisposableEffect(Unit) { onDispose { onEditorVisibilityChange(false) } }
 
     if (editor != null) {
-        if (simpleMode) BackupRuleEditorScreen(viewModel, editor!!, mainViewModel, connection) else CopyRuleEditorScreen(viewModel, connection.connection.name, editor!!)
+        if (editor!!.mode == EditorMode.SIMPLE) {
+            BackupRuleEditorScreen(viewModel, editor!!, mainViewModel, connection)
+        } else {
+            CopyRuleEditorScreen(
+                viewModel = viewModel,
+                connectionName = connection.connection.name,
+                state = editor!!,
+                titleOverride = if (simpleMode) "Advanced backup settings" else null,
+            )
+        }
         return
     }
     if (preview.ruleId != null) {
@@ -97,7 +112,7 @@ internal fun CopyRulesScreen(
                     Text(connection.connection.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Button(onClick = viewModel::newRule) { Text(if (simpleMode) "+ Backup" else "+ Rule") }
+            Button(onClick = { if (simpleMode) viewModel.newBackup() else viewModel.newRule() }) { Text(if (simpleMode) "+ Backup" else "+ Rule") }
         }
         message?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall) }
         Spacer(Modifier.height(8.dp))
@@ -106,7 +121,7 @@ internal fun CopyRulesScreen(
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(if (simpleMode) "No backups configured" else "No Copy to SMB rules", fontWeight = FontWeight.SemiBold)
                     Text(if (simpleMode) "Choose a phone folder and set when it should be backed up to this NAS. The original files stay on the phone." else "Choose an Android folder and copy its files into this SMB connection. Source files are never deleted or moved.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(onClick = viewModel::newRule) { Text(if (simpleMode) "Create backup" else "Create rule") }
+                    Button(onClick = { if (simpleMode) viewModel.newBackup() else viewModel.newRule() }) { Text(if (simpleMode) "Create backup" else "Create rule") }
                 }
             }
         } else {
@@ -121,11 +136,36 @@ internal fun CopyRulesScreen(
 private fun CopyRuleCard(rule: CopyRuleEntity, execution: CopyExecutionUiState?, viewModel: CopyRulesViewModel, simpleMode: Boolean) {
     val busy = execution?.state in setOf(WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED, WorkInfo.State.RUNNING)
     val manualBusy = busy && execution?.automatic == false
+    var menuExpanded by remember { mutableStateOf(false) }
     ElevatedCard(Modifier.fillMaxWidth(), shape = SectionShape, colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(friendlyCopySource(rule.sourceTreeUri), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("NAS folder: ${rule.destinationPath.ifBlank { "Connection root" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (simpleMode) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f)) {
+                        Text(friendlyCopySource(rule.sourceTreeUri), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("NAS folder: ${rule.destinationPath.ifBlank { "Connection root" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Box {
+                        TextButton(onClick = { menuExpanded = true }) { Text("⋮") }
+                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Advanced settings") },
+                                onClick = { menuExpanded = false; viewModel.editRule(rule, EditorMode.ADVANCED) },
+                                enabled = !busy,
+                            )
+                            DropdownMenuItem(
+                                text = { Text("History") },
+                                onClick = { menuExpanded = false; viewModel.showActivity(rule) },
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("Delete") },
+                                onClick = { menuExpanded = false; viewModel.deleteRule(rule) },
+                                enabled = !busy,
+                            )
+                        }
+                    }
+                }
                 Text(
                     if (rule.automaticCopyEnabled) "Daily at ${copyTimeLabel(rule.scheduledTimeMinutesOfDay)}" else "Automatic backup off",
                     style = MaterialTheme.typography.labelMedium,
@@ -137,13 +177,13 @@ private fun CopyRuleCard(rule: CopyRuleEntity, execution: CopyExecutionUiState?,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 execution?.let { CopyExecutionStatus(it) }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = { viewModel.showActivity(rule) }) { Text("History") }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)) {
                     OutlinedButton(onClick = { viewModel.previewRule(rule) }, enabled = !busy) { Text("Test") }
-                    TextButton(onClick = { viewModel.deleteRule(rule) }, enabled = !busy) { Text("Delete") }
-                    Button(onClick = { viewModel.editRule(rule) }, enabled = !busy) { Text("Edit backup") }
+                    Button(onClick = { viewModel.editBackup(rule) }, enabled = !busy) { Text("Edit backup") }
                 }
             } else {
+                Text(friendlyCopySource(rule.sourceTreeUri), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("NAS folder: ${rule.destinationPath.ifBlank { "Connection root" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(if (rule.conflictPolicy == CopyConflictPolicy.KEEP_BOTH) "Keep Both" else "Replace + backup", style = MaterialTheme.typography.labelMedium)
                     Text(if (rule.automaticCopyEnabled) "Auto • ${copyTimeLabel(rule.scheduledTimeMinutesOfDay)}" else "Manual", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
@@ -474,7 +514,7 @@ private fun BackupRuleEditorScreen(viewModel: CopyRulesViewModel, state: CopyRul
 }
 
 @Composable
-private fun CopyRuleEditorScreen(viewModel: CopyRulesViewModel, connectionName: String, state: CopyRuleEditorState) {
+private fun CopyRuleEditorScreen(viewModel: CopyRulesViewModel, connectionName: String, state: CopyRuleEditorState, titleOverride: String? = null) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let(viewModel::selectSourceTree) }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = ScreenPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
@@ -482,7 +522,7 @@ private fun CopyRuleEditorScreen(viewModel: CopyRulesViewModel, connectionName: 
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 TextButton(onClick = viewModel::dismissEditor) { Text("←") }
                 Column {
-                    Text(if (state.id == null) "New copy rule" else "Edit copy rule", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                    Text(titleOverride ?: if (state.id == null) "New copy rule" else "Edit copy rule", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                     Text(connectionName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
