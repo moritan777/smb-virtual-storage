@@ -8,9 +8,9 @@ Network Storage is a single-module, non-root Android application. It indexes a c
 
 Compose and ViewModels handle connection editing, local-index browsing, general settings, the dedicated Backup area, Copy to SMB rule editing, preview, activity, and execution status. Room stores connection metadata, indexed entries, cache metadata, Copy to SMB rules, and copy history.
 
-The Backup area reuses the existing connection and Copy to SMB rule model. It provides a focused NAS-connection workflow and a per-connection list of phone-folder backup rules; it does not introduce a second transfer engine.
+The Backup area reuses the existing connection and Copy to SMB rule model. It provides a focused NAS-connection workflow and a per-connection list of phone-folder backup rules; it does not introduce a second transfer engine. Its destination picker lists folders below the selected share and connection root, supports parent navigation and selecting the current folder, and creates new directories only through the explicit `createDirectory` operation after validating a root-relative path.
 
-Normal SMB access stays behind the read-only `SmbClient` interface. Copy to SMB alone uses a separate `SmbCopyClient` and a narrowly scoped write boundary below the connection root. Credentials are protected by Android Keystore and are not stored in Room, Worker input, or copy history. Connection-root-relative paths are normalized at each boundary.
+SMB listing and file reads stay behind `SmbClient`. It also exposes one explicit `createDirectory` operation for the Backup NAS folder picker, limited to creating directories below the selected connection root; it does not provide arbitrary file writes. Copy to SMB file transfers alone use the separate `SmbCopyClient` and its narrowly scoped write boundary below the connection root. Credentials are protected by Android Keystore and are not stored in Room, Worker input, or copy history. Connection-root-relative paths are normalized at each boundary.
 
 ## Index and browser
 
@@ -50,7 +50,7 @@ WorkManager progress is surfaced as total / completed / copied / skipped / faile
 
 ## Backup settings and daily execution
 
-`BackupSettingsScreen` provides the dedicated Backup entry point. A user can add a NAS connection by entering host, port, credentials, optional domain, and SMB share name. The connection is checked before it is accepted. Selecting a connection opens its backup-rule workflow, which reuses the Copy to SMB rule editor and transfer pipeline.
+`BackupSettingsScreen` provides the dedicated Backup entry point. A user can add a NAS connection by entering host, port, credentials, optional domain, and SMB share name. The connection is checked before it is accepted. Selecting a connection opens its backup-rule workflow, which reuses the Copy to SMB rule editor and transfer pipeline. The NAS destination picker lists folders through `SmbClient.list`, supports parent navigation and current-folder selection, and creates new directories through `SmbClient.createDirectory`. Folder creation retrieves the saved credential for the selected connection and clears the password character array after the operation.
 
 A rule stores the SAF source tree, destination directory relative to the configured SMB root, conflict policy, subfolder behavior, and optional daily schedule settings. Deleting a connection removes app-side connection data, related backup rules/history, local index data, and saved credentials; it does not delete NAS files or the phone's source files.
 
