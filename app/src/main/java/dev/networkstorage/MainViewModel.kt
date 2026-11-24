@@ -153,6 +153,43 @@ class MainViewModel @Inject constructor(
     fun openEditConnection(summary: ConnectionSummary) { val c = summary.connection; editor.value = ConnectionEditorState(c.id, c.name, c.host, c.port.toString(), c.username, c.domain.orEmpty(), c.share, c.basePath, c.rootMode); screen.value = AppScreen.CONNECTION_EDIT }
     fun updateEditor(value: ConnectionEditorState) { editor.value = value }
     fun saveEditor(password: String) = viewModelScope.launch { val value = editor.value; runCatching { if (value.id == null) repository.addConnection(value.name, value.host, value.port.toIntOrNull() ?: 445, value.share, value.basePath, value.username, password.toCharArray(), value.domain, value.mode) else repository.updateConnection(value.id, value.name, value.host, value.port.toIntOrNull() ?: 445, value.share, value.basePath, value.username, password.takeIf(String::isNotEmpty)?.toCharArray(), value.domain, value.mode) }.onSuccess { message.value = "Connection saved"; screen.value = AppScreen.CONNECTIONS }.onFailure { message.value = "Check the connection information and network folder" } }
+    fun createBackupConnection(
+        name: String,
+        host: String,
+        port: String,
+        username: String,
+        password: String,
+        domain: String,
+        share: String,
+        onComplete: (ConnectionSummary?) -> Unit,
+    ) = viewModelScope.launch {
+        val parsedPort = port.toIntOrNull()
+        if (host.isBlank() || username.isBlank() || password.isBlank() || share.isBlank() || parsedPort == null || parsedPort !in 1..65535) {
+            message.value = "Enter a valid IP address, port, username, password, and share name"
+            onComplete(null)
+            return@launch
+        }
+        val connectionName = name.trim().ifBlank { host.trim() }
+        val config = ConnectionConfig("backup-setup", connectionName, host.trim(), parsedPort, share.trim(), "", username.trim(), domain.trim().ifBlank { null }, FolderMode.ON_DEMAND)
+        val validation = runCatching { smb.list(config, Credential(password.toCharArray()), "") }
+        if (validation.isFailure) {
+            message.value = workerMessage(null, UserFacingError.code(validation.exceptionOrNull()!!))
+            onComplete(null)
+            return@launch
+        }
+        runCatching {
+            val id = repository.addConnection(connectionName, host, parsedPort, share, "", username, password.toCharArray(), domain, FolderMode.ON_DEMAND)
+            val saved = requireNotNull(dao.connection(id))
+            ConnectionSummary(saved, 0L, null, true)
+        }.onSuccess {
+            message.value = "NAS connection saved"
+            onComplete(it)
+        }.onFailure {
+            message.value = it.message ?: "Could not save NAS connection"
+            onComplete(null)
+        }
+    }
+
     fun deleteConnection(connection: ConnectionSummary) = viewModelScope.launch { workManager.cancelUniqueWork("manual-scan-${connection.connection.id}"); runCatching { repository.deleteConnection(connection.connection.id) }.onSuccess { if (selectedConnection.value?.connection?.id == connection.connection.id) selectedConnection.value = null; message.value = "Local connection and index deleted" }.onFailure { message.value = "Could not safely delete the local connection" } }
     fun deleteRootIndex(connection: ConnectionSummary) = viewModelScope.launch { workManager.cancelUniqueWork("manual-scan-${connection.connection.id}"); runCatching { repository.deleteRootIndex(connection.connection.id) }.onSuccess { message.value = "Local index target deleted" }.onFailure { message.value = "Could not delete the local index target" } }
     fun setCacheLimitGib(input: String) = viewModelScope.launch { SettingsRepository.gibToBytes(input).onSuccess { bytes -> settings.setCacheLimitBytes(bytes); message.value = "Cache limit saved" }.onFailure { message.value = "Enter a whole number of at least 1 GB" } }
