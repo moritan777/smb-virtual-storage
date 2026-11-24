@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
@@ -31,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,6 +56,7 @@ internal fun CopyRulesScreen(
     onEditorVisibilityChange: (Boolean) -> Unit = {},
     simpleMode: Boolean = false,
     viewModel: CopyRulesViewModel = hiltViewModel(),
+    mainViewModel: MainViewModel? = null,
 ) {
     val rules by viewModel.rules.collectAsState()
     val executionStates by viewModel.executionStates.collectAsState()
@@ -67,7 +70,7 @@ internal fun CopyRulesScreen(
     DisposableEffect(Unit) { onDispose { onEditorVisibilityChange(false) } }
 
     if (editor != null) {
-        if (simpleMode) BackupRuleEditorScreen(viewModel, editor!!) else CopyRuleEditorScreen(viewModel, connection.connection.name, editor!!)
+        if (simpleMode) BackupRuleEditorScreen(viewModel, editor!!, mainViewModel, connection) else CopyRuleEditorScreen(viewModel, connection.connection.name, editor!!)
         return
     }
     if (preview.ruleId != null) {
@@ -325,8 +328,74 @@ private fun copyHistoryStatusLabel(status: CopyHistoryStatus) = when (status) {
 }
 
 @Composable
-private fun BackupRuleEditorScreen(viewModel: CopyRulesViewModel, state: CopyRuleEditorState) {
+private fun BackupRuleEditorScreen(viewModel: CopyRulesViewModel, state: CopyRuleEditorState, mainViewModel: MainViewModel?, connection: ConnectionSummary) {
+    val remotePicker by (mainViewModel?.remotePicker ?: kotlinx.coroutines.flow.MutableStateFlow(RemotePickerState())).collectAsState()
+    var showCreateFolder by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var newFolderName by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(\"\") }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let(viewModel::selectSourceTree) }
+    if (remotePicker.visible) {
+        AlertDialog(
+            onDismissRequest = { mainViewModel?.closeRemotePicker() },
+            title = { Text("NAS folders") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(connection.connection.share + if (remotePicker.path.isBlank()) " /" else " / ${remotePicker.path}")
+                    if (remotePicker.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    remotePicker.error?.let { Text("Could not browse: $it", color = MaterialTheme.colorScheme.error) }
+                    if (remotePicker.path.isNotBlank()) {
+                        TextButton(onClick = { mainViewModel?.browseBackupFolder(connection, FolderNavigation.parent(remotePicker.path)) }) { Text("← Up one level") }
+                    }
+                    androidx.compose.foundation.lazy.LazyColumn(Modifier.height(240.dp)) {
+                        items(remotePicker.folders) { folder ->
+                            Row(
+                                Modifier.fillMaxWidth().clickable { mainViewModel?.browseBackupFolder(connection, folder) }.padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text("📁")
+                                Text(folder.substringAfterLast('/'))
+                            }
+                        }
+                    }
+                    TextButton(onClick = { showCreateFolder = true }) { Text("+ New folder") }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.updateEditor(state.copy(destinationPath = remotePicker.path))
+                        mainViewModel?.closeRemotePicker()
+                    },
+                    enabled = !remotePicker.loading && remotePicker.error == null,
+                ) { Text("Use this folder") }
+            },
+            dismissButton = { TextButton(onClick = { mainViewModel?.closeRemotePicker() }) { Text("Cancel") } },
+        )
+    }
+    if (showCreateFolder) {
+        AlertDialog(
+            onDismissRequest = { showCreateFolder = false; newFolderName = "" },
+            title = { Text("Create NAS folder") },
+            text = {
+                OutlinedTextField(
+                    value = newFolderName,
+                    onValueChange = { newFolderName = it },
+                    label = { Text("Folder name") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        mainViewModel?.createBackupFolder(connection, newFolderName)
+                        showCreateFolder = false
+                        newFolderName = ""
+                    },
+                    enabled = newFolderName.isNotBlank() && !remotePicker.loading,
+                ) { Text("Create") }
+            },
+            dismissButton = { TextButton(onClick = { showCreateFolder = false; newFolderName = "" }) { Text("Cancel") } },
+        )
+    }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = ScreenPadding), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Spacer(Modifier.height(8.dp))
@@ -339,14 +408,17 @@ private fun BackupRuleEditorScreen(viewModel: CopyRulesViewModel, state: CopyRul
             OutlinedButton(onClick = { picker.launch(null) }, modifier = Modifier.fillMaxWidth()) { Text("Choose folder") }
         }
         item {
-            OutlinedTextField(
-                value = state.destinationPath,
-                onValueChange = { viewModel.updateEditor(state.copy(destinationPath = it)) },
-                label = { Text("NAS destination folder") },
-                placeholder = { Text("Blank = NAS root") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
+            Text("NAS destination", style = MaterialTheme.typography.labelMedium)
+            Text(
+                if (state.destinationPath.isBlank()) "NAS shared folder root" else state.destinationPath,
+                style = MaterialTheme.typography.bodyMedium,
             )
+            OutlinedButton(
+                onClick = { mainViewModel?.openBackupFolderPicker(connection) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = mainViewModel != null,
+            ) { Text("Browse NAS folders") }
+            Text("Choose a folder from the NAS hierarchy or create a new one.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item { ToggleRow("Automatic daily backup", state.automaticCopyEnabled) { viewModel.updateEditor(state.copy(automaticCopyEnabled = it)) } }
         if (state.automaticCopyEnabled) {
