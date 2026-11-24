@@ -190,6 +190,48 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun openBackupFolderPicker(connection: ConnectionSummary) = browseBackupFolder(connection, "")
+
+    fun browseBackupFolder(connection: ConnectionSummary, path: String) = viewModelScope.launch {
+        val normalized = runCatching { RemotePath.normalize(path) }.getOrElse {
+            remotePicker.value = remotePicker.value.copy(error = "INVALID_PATH", loading = false)
+            return@launch
+        }
+        remotePicker.value = RemotePickerState(visible = true, share = connection.connection.share, path = normalized, loading = true)
+        val result = runCatching {
+            val credential = credentials.get(connection.connection.id) ?: error("CREDENTIAL_REQUIRED")
+            val c = connection.connection
+            try {
+                val config = ConnectionConfig(c.id, c.name, c.host, c.port, c.share, c.basePath, c.username, c.domain, c.rootMode)
+                NetworkFolderPickerPolicy.folders(smb.list(config, credential, normalized))
+            } finally { credential.password.fill('\u0000') }
+        }
+        result.onSuccess { remotePicker.value = remotePicker.value.copy(folders = it, loading = false, error = null) }
+            .onFailure { remotePicker.value = remotePicker.value.copy(loading = false, error = safePickerError(it)) }
+    }
+
+    fun createBackupFolder(connection: ConnectionSummary, name: String) = viewModelScope.launch {
+        val cleanName = name.trim()
+        if (cleanName.isBlank() || cleanName.contains('/') || cleanName.contains('\\')) {
+            message.value = "Enter a folder name without path separators"
+            return@launch
+        }
+        val picker = remotePicker.value
+        val relative = listOf(picker.path, cleanName).filter { it.isNotBlank() }.joinToString("/")
+        val result = runCatching {
+            val credential = credentials.get(connection.connection.id) ?: error("CREDENTIAL_REQUIRED")
+            val c = connection.connection
+            try {
+                val config = ConnectionConfig(c.id, c.name, c.host, c.port, c.share, c.basePath, c.username, c.domain, c.rootMode)
+                smb.createDirectory(config, credential, relative)
+            } finally { credential.password.fill('\u0000') }
+        }
+        result.onSuccess {
+            message.value = "Folder created"
+            browseBackupFolder(connection, picker.path)
+        }.onFailure { message.value = UserFacingError.message(UserFacingError.code(it)) }
+    }
+
     fun deleteConnection(connection: ConnectionSummary) = viewModelScope.launch { workManager.cancelUniqueWork("manual-scan-${connection.connection.id}"); runCatching { repository.deleteConnection(connection.connection.id) }.onSuccess { if (selectedConnection.value?.connection?.id == connection.connection.id) selectedConnection.value = null; message.value = "Local connection and index deleted" }.onFailure { message.value = "Could not safely delete the local connection" } }
     fun deleteRootIndex(connection: ConnectionSummary) = viewModelScope.launch { workManager.cancelUniqueWork("manual-scan-${connection.connection.id}"); runCatching { repository.deleteRootIndex(connection.connection.id) }.onSuccess { message.value = "Local index target deleted" }.onFailure { message.value = "Could not delete the local index target" } }
     fun setCacheLimitGib(input: String) = viewModelScope.launch { SettingsRepository.gibToBytes(input).onSuccess { bytes -> settings.setCacheLimitBytes(bytes); message.value = "Cache limit saved" }.onFailure { message.value = "Enter a whole number of at least 1 GB" } }
