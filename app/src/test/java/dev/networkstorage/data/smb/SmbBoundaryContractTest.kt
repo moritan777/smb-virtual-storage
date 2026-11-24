@@ -6,8 +6,9 @@ import org.junit.Test
 
 class SmbBoundaryContractTest {
     @Test
-    fun `read only boundary exposes no mutation operations`() {
+    fun `read boundary exposes only scoped directory creation`() {
         val methodNames = SmbClient::class.java.methods.map { it.name }.toSet()
+        assertTrue("createDirectory" in methodNames)
 
         listOf(
             "createDirectories",
