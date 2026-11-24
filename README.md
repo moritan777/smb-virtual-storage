@@ -82,7 +82,7 @@ Instrumentation tests require a running emulator or connected device:
 
 ## Known limitations
 
-- Public Beta development line. Copy to SMB Preview, decision planning, activity/history, cancellation, and the failed-file retry backend are integrated into the default branch.
+- Public Beta development line. This development branch includes Copy to SMB Preview, decision planning, activity/history, cancellation, and the failed-file retry backend.
 - No SMB1, bidirectional sync, deletion propagation, streaming, partial-file open, or transfer resume. Interrupted transfers restart from byte zero.
 - WorkManager controls when automatic Copy to SMB work runs; the configured local time is a target, not an exact execution guarantee. A run skipped for unmet conditions is recorded and is not guaranteed to be retried that day.
 - Copy to SMB Preview does not lock the SMB state. A concurrent SMB change after Preview can change the final execution decision.
