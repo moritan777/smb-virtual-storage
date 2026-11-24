@@ -320,7 +320,12 @@ class MainViewModel @Inject constructor(
             message.value = "Open the NAS folder picker before creating a folder"
             return@launch
         }
-        val relativePath = runCatching { RemotePath.join(picker.path, name.trim()) }.getOrElse {
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) {
+            message.value = "Enter a folder name"
+            return@launch
+        }
+        val relativePath = runCatching { RemotePath.join(picker.path, cleanName) }.getOrElse {
             message.value = "Enter a valid folder name"
             return@launch
         }
