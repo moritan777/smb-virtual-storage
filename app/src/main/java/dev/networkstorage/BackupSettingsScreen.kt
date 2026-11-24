@@ -87,9 +87,9 @@ internal fun BackupSettingsScreen(viewModel: MainViewModel, onEditorVisibilityCh
         ) {
             item {
                 Spacer(Modifier.height(8.dp))
-                Text("Create backup", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                Text("Add NAS connection", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Enter the NAS connection here. You do not need to register it on another screen.",
+                    "Connect to a NAS to store your phone backups.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -136,9 +136,9 @@ internal fun BackupSettingsScreen(viewModel: MainViewModel, onEditorVisibilityCh
 
     Column(Modifier.fillMaxSize().padding(horizontal = ScreenPadding)) {
         Spacer(Modifier.height(8.dp))
-        Text("Backup settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Text("NAS Connections", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Text(
-            "Choose an existing NAS or enter a new connection. Existing copy rules and the same copy engine are reused.",
+            "Manage your NAS connections. Select a NAS to view or configure its backups.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -158,7 +158,7 @@ internal fun BackupSettingsScreen(viewModel: MainViewModel, onEditorVisibilityCh
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Text("Configure backups →", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        Text("View backups →", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                         TextButton(
                             onClick = { pendingDelete = summary },
                             modifier = Modifier.fillMaxWidth(),
