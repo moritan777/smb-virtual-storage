@@ -179,7 +179,12 @@ private fun CopyRuleCard(rule: CopyRuleEntity, execution: CopyExecutionUiState?,
                 execution?.let { CopyExecutionStatus(it) }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)) {
                     OutlinedButton(onClick = { viewModel.previewRule(rule) }, enabled = !busy) { Text("Test") }
-                    Button(onClick = { viewModel.editBackup(rule) }, enabled = !busy) { Text("Edit backup") }
+                    if (manualBusy) {
+                        OutlinedButton(onClick = { viewModel.cancelManualCopy(rule) }) { Text("Cancel") }
+                    } else {
+                        Button(onClick = { viewModel.copyNow(rule) }, enabled = !busy) { Text(if (busy) "Working…" else "Run now") }
+                    }
+                    OutlinedButton(onClick = { viewModel.editBackup(rule) }, enabled = !busy) { Text("Edit backup") }
                 }
             } else {
                 Text(friendlyCopySource(rule.sourceTreeUri), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
