@@ -50,7 +50,7 @@ WorkManager progress を UI に反映し、total / completed / copied / skipped 
 
 ## Backup 設定と毎日の実行
 
-`BackupSettingsScreen` が専用 Backup 画面を提供します。ホスト、ポート、認証情報、任意の domain、SMB share 名を入力して NAS 接続を追加し、接続確認に成功してから登録します。接続を選択すると、その接続に属するバックアップルールの画面へ進みます。ルール編集と転送処理は既存の Copy to SMB 機能を再利用します。保存先の NAS folder picker は `SmbClient.list` でフォルダだけを列挙し、親階層への移動と現在フォルダの選択を提供します。新規フォルダ作成では保存済み認証情報を取得して `SmbClient.createDirectory` を呼び出し、処理後にパスワード文字配列をクリアします。
+`BackupSettingsScreen` が専用 Backup 画面を提供します。ホスト、ポート、認証情報、任意の domain、SMB share 名を入力して NAS 接続を追加し、接続確認に成功してから登録します。接続を選択すると、その接続に属するバックアップルールの画面へ進みます。ルール編集と転送処理は既存の Copy to SMB 機能を再利用します。Backup 簡易UI（`simpleMode = true`）のルールカードには **Test**、**Run now**、**Edit backup** の各操作があり、**Run now** は既存の手動実行経路（`copyNow` / `CopyToSmbScheduler.enqueueManual`）を再利用して、充電要件、ネットワークポリシー、日次スケジュール時刻などの自動実行条件を待たずに即時実行します。独自の転送エンジンは追加せず、既存の unique work（`ExistingWorkPolicy.KEEP`）や排他制御をそのまま利用します。保存先の NAS folder picker は `SmbClient.list` でフォルダだけを列挙し、親階層への移動と現在フォルダの選択を提供します。新規フォルダ作成では保存済み認証情報を取得して `SmbClient.createDirectory` を呼び出し、処理後にパスワード文字配列をクリアします。
 
 ルールには SAF source tree、SMB connection root からの相対 destination directory、競合ポリシー、サブフォルダの扱い、任意の毎日実行設定を保存します。NAS 接続を削除すると、アプリ内の接続情報、関連するバックアップルール・履歴、ローカルインデックス、保存済み認証情報が削除されます。NAS 上のファイルや端末側 source ファイルは削除しません。
 

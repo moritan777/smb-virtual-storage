@@ -27,12 +27,14 @@ Backup 画面は、既存の NAS 接続と Copy to SMB のルールモデルを�
 - 充電・ネットワーク条件は Worker の実行時に確認する。条件を満たさない場合はスキップを履歴に残し、ファイルコピーを行わない。
 - WorkManager の実行は設定時刻より遅れる場合がある。正確なアラームとして検証せず、スキップ後の同日再実行も前提にしない。
 - 同じルールの manual / daily / retry work が別々の unique work として扱われる。
+- バックアップルールカードの **Run now** をクリックすると、充電、ネットワークポリシー、日次スケジュール時刻などの自動実行条件を待たずに手動コピー実行が即時キューイングされること。
 
 ## Copy to SMB の受け入れ確認
 
 最低限、次を確認します。
 
 - Backup 画面の **Test** から Preview を開き、ローディング中・エラー時・結果表示時の各状態で画面がクラッシュしない。
+- **Test** は SMB を変更せずにドライランのプレビューを実行すること。
 - 同じ source-relative path が複数の結果に含まれる場合も、LazyColumn の item key が衝突しない。
 - Preview が SMB を変更しない。
 - 同一 SHA-256 の original destination は `Unchanged` になる。

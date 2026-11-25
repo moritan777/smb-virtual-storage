@@ -10,7 +10,7 @@ Network Storage is a non-root Android 10+ app that stores a user-selected SMB2/S
 
 ## What it does
 
-- **Backup settings** — provides a dedicated backup area where NAS connections and backup rules can be created, edited, reviewed, and deleted. A rule selects a phone folder, a NAS destination, and optional daily execution settings.
+- **Backup settings** — provides a dedicated backup area where NAS connections and backup rules can be created, edited, reviewed, and deleted. Backup rules provide **Test**, **Run now**, and **Edit backup** actions; **Run now** immediately starts manual backup, bypassing automatic schedule conditions (such as charging, network requirements, and daily time). A rule selects a phone folder, a NAS destination, and optional daily execution settings.
 - **ON_DEMAND** — scans NAS metadata, downloads a complete file when opened, and keeps it in an evictable local cache. The cache is cleaned by LRU when the configured limit is exceeded.
 - **MIRROR / Keep offline** — retains complete local copies for offline use. Manual sync and optional WorkManager periodic sync are **one way, NAS → Device**. Mirror files are excluded from cache cleanup.
 - **COPY_TO_SMB / Copy to SMB** — copies a user-selected Android Storage Access Framework source tree one way into a destination below the configured SMB connection root. Source files are never deleted, moved, or modified.

@@ -54,6 +54,12 @@ The browser projection now marks a directory as having local cached content when
 
 The marker is intentionally not a folder-level cache claim. It means only that some content exists locally below the folder and helps the user decide where to navigate when offline.
 
+## Backup simple UI and Run now action
+
+Backup rules in simple mode (`simpleMode = true`) provide **Test**, **Run now**, and **Edit backup** actions directly on each rule card, with advanced settings, history, and delete available in the overflow menu.
+
+**Run now** reuses the existing manual Copy to SMB execution pipeline (`viewModel.copyNow` / `CopyToSmbScheduler.enqueueManual`), immediately queueing manual execution while bypassing automatic scheduling constraints (daily execution time, charging requirements, network policy) and retaining all existing safety boundaries, conflict policies, `.part` verification, and unique work deduplication.
+
 ## Current documentation boundary
 
 - `docs/v1-spec.md` — normative V1 product/security contract.

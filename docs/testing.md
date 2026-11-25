@@ -27,12 +27,14 @@ The Backup screen is a UI workflow over the existing connection and Copy to SMB 
 - Charging and network policies are checked by the worker at run time. When a condition is not met, the run is recorded as skipped and does not copy files.
 - WorkManager may run later than the configured local time; do not test it as an exact alarm or assume a skipped run is retried later that day.
 - Manual, daily, and retry work remain separate unique work streams for the same rule.
+- Clicking **Run now** on a backup rule card immediately queues manual copy execution, bypassing automatic schedule conditions (charging, network policy, daily execution time).
 
 ## Copy to SMB acceptance checks
 
 At minimum verify:
 
 - Open Preview using **Test** in the Backup area and verify that loading, error, and result states render without crashing.
+- **Test** performs a dry-run preview without modifying SMB.
 - Duplicate source-relative paths in a preview result do not produce duplicate LazyColumn item keys.
 - Preview performs no SMB mutation.
 - An identical original destination becomes `Unchanged`.
