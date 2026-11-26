@@ -3,6 +3,7 @@ package dev.networkstorage
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +15,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -159,11 +161,24 @@ internal fun BackupSettingsScreen(viewModel: MainViewModel, onEditorVisibilityCh
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Text("View backups →", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                        TextButton(
-                            onClick = { pendingDelete = summary },
+                        Spacer(Modifier.height(4.dp))
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                        ) { Text("Delete") }
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            FilledTonalButton(
+                                onClick = { selected = summary },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("View backups")
+                            }
+                            OutlinedButton(
+                                onClick = { pendingDelete = summary },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("Delete")
+                            }
+                        }
                     }
                 }
             }
